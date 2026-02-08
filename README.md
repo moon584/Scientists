@@ -1,31 +1,80 @@
 # 科学家精神传承网站
 
-基于 React + Vite + Tailwind 的单页应用，收录 50+ 位中国杰出科学家，支持搜索、领域筛选、分页浏览，详情页可预览相关 PDF 资料。
+基于 React + Vite + Tailwind 的单页应用，收录 50+ 位中国杰出科学家，支持搜索、领域筛选、分页浏览，以及基于 Dify 的 AI 智能问答助手。
 
-## 快速开始
+## 🌟 主要功能
 
-1) 安装依赖：`pnpm install`
-2) 启动开发：`pnpm dev`（默认 http://localhost:3000）
-3) 生产构建：`pnpm build`
+- **👥 科学家人物库**：收录详细生平与贡献，支持智能搜索（中文、拼音、首字母）。
+- **🔍 智能检索**：按领域筛选、拼音/汉字排序、分页展示。
+- **📚 资料预览**：集成 PDF 资料预览与下载功能。
+- **🤖 AI 问答助手**：集成 Dify 智能体，提供实时的科学家精神相关问答服务。
+- **🌓 沉浸体验**：支持明暗主题切换、献花致敬特效（Canvas Confetti）、Framer Motion 平滑动画。
 
-## 资源放置说明
+## 🚀 快速开始
 
-- **科学家数据**：`src/data/scientists.json`（头像与 PDF 路径使用绝对路径 `/docs/...`）。
-- **资料 PDF**：放在 `public/docs/相关资料/`（命名示例：`张三.pdf`）。
-- **头像图片**：放在 `public/docs/头像/`（命名示例：`张三.png`）。
-- **默认头像**：`public/docs/头像/default.png`（当指定头像不存在时显示此图）。
+### 1. 安装依赖
 
-## 技术栈与功能
+```bash
+pnpm install
+```
 
-- **核心栈**：React 18、Vite、TypeScript、Tailwind CSS、React Router 6。
-- **动画与交互**：Framer Motion（页面过渡与卡片动画）、canvas-confetti（致敬特效）。
-- **工具库**：pinyin-pro（支持姓名拼音/首字母搜索）。
-- **主页**：
-  - 智能搜索（支持中文、拼音、领域、标签检索）
-  - 随机推荐科学家
-  - 领域筛选、中文排序、分页、明暗主题切换
-- **详情页**：
-  - 头像加载容错处理
-  - 献花致敬互动（带计数与动画）
-  - 便捷的上一位/下一位导航
-  - 美化的 PDF 资料预览入口
+### 2. 配置环境变量
+
+复制示例文件创建 `.env`：
+
+```bash
+cp .env.example .env
+```
+
+编辑 `.env` 文件，填入你的 Dify 应用配置（用于聊天助手）：
+
+```ini
+# Dify 聊天助手配置
+VITE_DIFY_TOKEN=你的Dify应用Token
+VITE_DIFY_BASE_URL=https://您的Dify服务地址  # 例如 https://udify.app 或自建域名
+```
+
+### 3. 启动开发服务
+
+```bash
+pnpm dev
+# 访问 http://localhost:3000
+```
+
+### 4. 生产环境构建
+
+```bash
+pnpm build
+```
+
+## 📂 目录结构说明
+
+```
+├── public/                 # 静态资源
+│   └── docs/
+│       ├── 头像/          # 科学家头像 (命名: 姓名.png)
+│       └── 相关资料/      # PDF资料 (命名: 姓名.pdf)
+├── src/
+│   ├── components/         # 核心组件 (Avatar, Card, BackToTop等)
+│   ├── contexts/           # 全局状态 (Auth等)
+│   ├── data/               # 静态数据 (scientists.json)
+│   ├── hooks/              # 自定义钩子 (useTheme等)
+│   ├── pages/              # 页面视图 (Home, ScientistDetail)
+│   └── App.tsx             # 应用入口 (包含 Dify 注入逻辑)
+├── .env.example            # 环境变量模版
+├── index.html              # 入口 HTML
+└── package.json            # 依赖配置
+```
+
+## 🛠 技术栈
+
+- **前端框架**：React 18, TypeScript, Vite
+- **UI 样式**：Tailwind CSS, Framer Motion
+- **路由管理**：React Router v6
+- **AI 集成**：Dify AI (Embedded Script)
+- **工具库**：pinyin-pro, canvas-confetti, react-pdf
+
+## 📝 维护指南
+
+- **添加科学家**：在 `src/data/scientists.json` 中添加条目，并将对应资源放入 `public/docs/`。
+- **更新 AI**：在 Dify 平台调整提示词或知识库，前端无需修改代码（仅需确保 `.env` 配置正确）。
