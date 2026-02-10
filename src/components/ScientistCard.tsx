@@ -6,7 +6,7 @@ interface Scientist {
   id: string;
   name: string;
   avatar: string;
-  field: string;
+  field: string[];
   tags: string[];
   bio: string;
   references: string[];
@@ -17,53 +17,90 @@ interface ScientistCardProps {
 }
 
 export default function ScientistCard({ scientist }: ScientistCardProps) {
+  // 提取主要领域（取前两个）作为展示，避免过长
+  const mainField = scientist.field.join(' / ');
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5 }}
-      whileHover={{ y: -5, boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)' }}
-      className="group bg-white dark:bg-gray-800 rounded-2xl shadow-lg overflow-hidden border border-red-100 dark:border-red-900 hover:shadow-xl transition-all duration-300 flex flex-col h-full"
+      whileHover={{ y: -8 }}
+      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+      className="group relative h-full flex flex-col bg-white dark:bg-gray-800 rounded-2xl shadow-md hover:shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-700 transition-all duration-300"
     >
-      <div className="relative p-6 flex justify-center bg-gradient-to-b from-red-50 to-white dark:from-gray-800 dark:to-gray-750">
-        <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-white dark:border-gray-700 shadow-md transition-all duration-500 group-hover:border-red-500 dark:group-hover:border-red-400">
+      {/* 顶部装饰背景：红色渐变 + 装饰性图案 */}
+      <div className="h-28 bg-gradient-to-r from-red-600 to-red-700 dark:from-red-900 dark:to-red-800 relative overflow-hidden">
+        {/* 装饰性背景圆圈 */}
+        <div className="absolute -top-4 -right-4 w-24 h-24 bg-white/10 rounded-full blur-xl"></div>
+        <div className="absolute top-8 left-4 w-12 h-12 bg-white/5 rounded-full blur-md"></div>
+        
+        {/* 右上角装饰图标 */}
+        <div className="absolute top-4 right-4 text-white/20 text-4xl font-serif leading-none select-none">
+          <i className="fas fa-atom"></i>
+        </div>
+      </div>
+
+      {/* 头像区域 - 悬浮重叠效果 */}
+      <div className="relative px-6 -mt-14 mb-3 flex items-end justify-between">
+        <motion.div 
+          className="w-24 h-24 rounded-full border-4 border-white dark:border-gray-800 shadow-lg overflow-hidden relative z-10 bg-white dark:bg-gray-700"
+          whileHover={{ scale: 1.05 }}
+        >
           <ScientistAvatar
             src={scientist.avatar}
             alt={scientist.name}
-            className="w-full h-full"
+            className="w-full h-full object-cover"
           />
+        </motion.div>
+        
+        {/* 右侧：主要领域 (小字显示) */}
+        <div className="mb-1 text-right max-w-[50%]">
+           <span className="text-xs font-semibold tracking-wide text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 px-2 py-1 rounded-md uppercase truncate block">
+            {mainField}
+           </span>
         </div>
       </div>
-      <div className="p-5 flex flex-col flex-grow">
-        <h3 className="text-center text-xl font-bold text-gray-800 dark:text-white mb-1 transition-colors group-hover:text-red-600 dark:group-hover:text-red-400">{scientist.name}</h3>
-        <p className="text-center text-red-600 dark:text-red-400 text-sm mb-3">{scientist.field}</p>
-        
-        <div className="flex flex-wrap gap-2 mb-3 justify-center">
-          {scientist.tags.map((tag, index) => (
+
+      {/* 内容主体 */}
+      <div className="px-6 pb-6 flex-grow flex flex-col">
+        {/* 姓名 */}
+        <div className="mb-3">
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white group-hover:text-red-700 dark:group-hover:text-red-400 transition-colors">
+            {scientist.name}
+          </h3>
+        </div>
+
+        {/* 标签 (仅显示前3个，避免拥挤) */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          {scientist.tags.slice(0, 3).map((tag, index) => (
             <span
               key={index}
-              className="px-2 py-1 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-xs rounded-full"
+              className="inline-flex items-center text-[10px] sm:text-xs font-medium px-2.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600"
             >
-              {tag}
+               {index === 0 && <i className="fas fa-medal mr-1 text-yellow-500 opacity-80"></i>}
+               {tag}
             </span>
           ))}
         </div>
-        <p className="text-gray-600 dark:text-gray-300 text-sm mb-4 line-clamp-3 flex-grow">
+
+        {/* 简介 - 增加行高，更易读 */}
+        <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed line-clamp-3 mb-6 flex-grow text-justify font-sans">
           {scientist.bio}
         </p>
-        <Link
-          to={`/scientist/${scientist.id}`}
-          className="inline-flex items-center justify-center w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors duration-300 mt-2 group-hover:shadow-md"
-        >
-          查看详情
-          <motion.span 
-            initial={{ x: 0 }} 
-            whileHover={{ x: 3 }}
-            transition={{ type: "spring", stiffness: 400, damping: 10 }}
+
+        {/* 底部按钮区域 */}
+        <div className="pt-4 mt-auto border-t border-gray-100 dark:border-gray-700 flex items-center justify-between">
+          <span className="text-xs text-gray-400 font-medium group-hover:text-red-500 transition-colors">
+            查看生平事迹
+          </span>
+          <Link
+            to={`/scientist/${scientist.id}`}
+            className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-red-50 dark:bg-red-900/40 text-red-600 dark:text-red-400 group-hover:bg-red-600 group-hover:text-white transition-all duration-300 shadow-sm"
+            aria-label={`查看 ${scientist.name} 的详情`}
           >
-            <i className="fas fa-arrow-right ml-2 text-sm"></i>
-          </motion.span>
-        </Link>
+            <i className="fas fa-arrow-right text-xs transform group-hover:-rotate-45 transition-transform duration-300"></i>
+          </Link>
+        </div>
       </div>
     </motion.div>
   );

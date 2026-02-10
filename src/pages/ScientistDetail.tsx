@@ -11,9 +11,10 @@ interface Scientist {
     id: string;
     name: string;
     avatar: string;
-    field: string;
+    field: string[];
     tags: string[];
     bio: string;
+    motto?: string;
     references: string[];
 }
 
@@ -241,7 +242,7 @@ export default function ScientistDetail() {
                                     }}
                                     className="text-center md:text-left">
                                     <h2 className="text-2xl md:text-3xl font-bold text-white mb-2">{scientist.name}</h2>
-                                    <p className="text-red-100 text-lg mb-4">{scientist.field}</p>
+                                    <p className="text-red-100 text-lg mb-4">{scientist.field.join('、')}</p>
                                     <div className="flex flex-wrap justify-center md:justify-start gap-2">
                                         {scientist.tags.map((tag, index) => <motion.span
                                             key={index}
@@ -285,26 +286,37 @@ export default function ScientistDetail() {
                                 className="text-xl font-bold text-gray-800 dark:text-white mb-4 flex items-center">
                                 <i className="fas fa-user-circle text-red-600 dark:text-red-400 mr-2"></i>个人简介
                                               </h3>
-                             <div
-                                 className="text-gray-600 dark:text-gray-300 leading-relaxed p-4 bg-red-50/50 dark:bg-red-900/10 rounded-lg border-l-4 border-red-500">
-                                 <p
-                                     style={{
-                                         fontFamily: "\"Noto Sans SC\", sans-serif"
-                                      }}>
-                                      {scientist.bio}
-                                 </p>
-                            </div>
+                                <div
+                                    className="text-gray-600 dark:text-gray-300 leading-relaxed p-4 bg-red-50/50 dark:bg-red-900/10 rounded-lg border-l-4 border-red-500">
+                                    <div
+                                        style={{
+                                            fontFamily: "\"Noto Sans SC\", sans-serif"
+                                        }}>
+                                        {scientist.bio.split('\n').map((paragraph, idx) => (
+                                            paragraph.trim() && (
+                                                <p key={idx} className="mb-4 last:mb-0">
+                                                    {paragraph.trim()}
+                                                </p>
+                                            )
+                                        ))}
+                                    </div>
+                                </div>
                             {}
-                            <div className="mt-6">
-                                <h4 className="font-medium text-gray-700 dark:text-gray-300 mb-2">科学家精神内涵</h4>
-                                <ul
-                                    className="list-disc pl-5 space-y-1 text-gray-600 dark:text-gray-400 text-sm">
-                                    <li>严谨治学，追求真理的科学态度</li>
-                                    <li>勇于创新，敢为人先的探索精神</li>
-                                    <li>淡泊名利，甘于奉献的高尚情操</li>
-                                    <li>家国情怀，科技报国的责任担当</li>
-                                </ul>
-                            </div>
+                            {scientist.motto && (
+                                <div className="mt-6">
+                                    <h4 className="font-medium text-gray-700 dark:text-gray-300 mb-3 flex items-center">
+                                        <i className="fas fa-quote-left text-red-500 mr-2 opacity-70"></i>
+                                        院士寄语
+                                    </h4>
+                                    <div className="relative p-5 bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-900/20 dark:to-orange-900/20 rounded-xl border border-red-100 dark:border-red-900/30">
+                                        <div className="absolute top-2 left-3 text-4xl text-red-200 dark:text-red-900/50 font-serif opacity-50">"</div>
+                                        <p className="text-gray-700 dark:text-gray-300 text-lg font-medium italic text-center px-4 relative z-10 font-serif">
+                                            {scientist.motto}
+                                        </p>
+                                        <div className="absolute bottom-[-10px] right-4 text-4xl text-red-200 dark:text-red-900/50 font-serif opacity-50 rotate-180">"</div>
+                                    </div>
+                                </div>
+                            )}
                         </motion.div>
                         {}
                         <motion.div

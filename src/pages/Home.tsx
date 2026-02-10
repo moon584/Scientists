@@ -18,7 +18,7 @@ export default function Home() {
   const { theme, toggleTheme, isDark } = useTheme();
   
   // 提取所有唯一的领域
-  const allFields = ['all', ...Array.from(new Set(scientists.map(s => s.field)))];
+  const allFields = ['all', ...Array.from(new Set(scientists.flatMap(s => s.field)))];
 
   // 过滤科学家数据
   useEffect(() => {
@@ -26,7 +26,7 @@ export default function Home() {
     
     // 按领域过滤
     if (selectedField !== 'all') {
-      result = result.filter(s => s.field === selectedField);
+      result = result.filter(s => s.field.includes(selectedField));
     }
     
     // 按搜索词过滤
@@ -41,7 +41,7 @@ export default function Home() {
         const pinyinMatch = match(scientist.name, keyword);
         
         // 其他字段匹配
-        const fieldIncludes = scientist.field.toLowerCase().includes(keyword);
+        const fieldIncludes = scientist.field.some(f => f.toLowerCase().includes(keyword));
         const tagsIncludes = scientist.tags.some(tag => tag.toLowerCase().includes(keyword));
         const bioIncludes = scientist.bio.toLowerCase().includes(keyword);
         
@@ -79,7 +79,14 @@ export default function Home() {
   <div className="relative bg-gradient-to-r from-red-700 to-red-500 text-white overflow-hidden">
     <div className="absolute inset-0 bg-[url('https://space.coze.cn/api/coze_space/gen_image?image_size=landscape_16_9&prompt=science%20laboratory%20background%20research&sign=e83c479686226f1fbcc4fbf7df5ff9c8')] bg-cover bg-center opacity-10"></div>
     <div className="container mx-auto px-4 py-16 md:py-24 relative z-10">
-      <div className="absolute top-4 right-4">
+      <div className="absolute top-4 right-4 flex gap-3">
+        <button
+          onClick={() => navigate('/statistics')}
+          className="p-2 bg-white/20 backdrop-blur-sm rounded-full hover:bg-white/30 transition-colors text-white"
+          title="数据图谱"
+        >
+          <i className="fas fa-chart-pie"></i>
+        </button>
         <button
           onClick={toggleTheme}
           className="p-2 bg-white/20 backdrop-blur-sm rounded-full hover:bg-white/30 transition-colors"
