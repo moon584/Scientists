@@ -1,6 +1,6 @@
 # 科学家精神传承网站
 
-基于 React + Vite + Tailwind 的单页应用，收录 50+ 位中国杰出科学家，支持搜索、领域筛选、分页浏览，以及基于 Dify 的 AI 智能问答助手。
+基于 React + Vite + Tailwind 的单页应用，收录 50+ 位中国杰出科学家，支持搜索、领域筛选、分页浏览，以及基于百度 AppBuilder 的 AI 智能问答助手。
 
 ## 🌟 主要功能
 
@@ -8,7 +8,7 @@
 - **� 数据图谱**：多维度可视化分析，包含领域分布、籍贯热点及年代跨度统计。
 - **🔍 智能检索**：按领域筛选、拼音/汉字排序、分页展示。
 - **📚 资料预览**：集成 PDF 资料预览与下载功能。
-- **🤖 AI 问答助手**：封装优化的 Dify 智能体组件，提供实时的科学家精神相关问答服务。
+- **🤖 AI 问答助手**：集成百度 AppBuilder 智能体，提供实时的科学家精神相关问答服务。
 - **🌓 沉浸体验**：支持明暗主题切换、献花致敬特效（Canvas Confetti）、Framer Motion 平滑动画。
 
 ## 🚀 快速开始
@@ -27,12 +27,11 @@ pnpm install
 cp .env.example .env
 ```
 
-编辑 `.env` 文件，填入你的 Dify 应用配置（用于聊天助手）：
+编辑 `.env` 文件，填入你的百度 AppBuilder 应用配置（用于聊天助手）：
 
-```ini
-# Dify 聊天助手配置
-VITE_DIFY_TOKEN=你的Dify应用Token
-VITE_DIFY_BASE_URL=https://您的Dify服务地址  # 例如 https://udify.app 或自建域名
+```env
+# 百度 AppBuilder 聊天助手配置
+VITE_APPBUILDER_URL=https://appbuilder.baidu.com/s/9LXqQPf6
 ```
 
 ### 3. 启动开发服务
@@ -50,13 +49,13 @@ pnpm build
 
 ## 📂 目录结构说明
 
-```
+```text
 ├── public/                 # 静态资源
 │   └── docs/
 │       ├── 头像/          # 科学家头像 (命名: 姓名.png)
 │       └── 相关资料/      # PDF资料 (命名: 姓名.pdf)
 ├── src/
-│   ├── components/         # 核心组件 (DifyChatbot, ScientistCard, BackToTop等)
+│   ├── components/         # 核心组件 (ScientistCard, BackToTop等)
 │   ├── contexts/           # 全局状态 (Auth等)
 │   ├── data/               # 静态数据 (scientists.json)
 │   ├── hooks/              # 自定义钩子 (useTheme等)
@@ -73,10 +72,10 @@ pnpm build
 - **UI 样式**：Tailwind CSS, Framer Motion
 - **数据可视化**：Recharts
 - **路由管理**：React Router v6
-- **AI 集成**：Dify AI (Embedded Script)
+- **AI 集成**：Baidu AppBuilder (Iframe)
 - **工具库**：pinyin-pro, canvas-confetti, react-pdf
 
 ## 📝 维护指南
 
 - **添加科学家**：在 `src/data/scientists.json` 中添加条目（注意 `field` 字段现已升级为数组格式），并将对应资源放入 `public/docs/`。
-- **更新 AI**：在 Dify 平台调整提示词或知识库，前端无需修改代码（仅需确保 `.env` 配置正确）。
+- **更新 AI**：在百度 AppBuilder 平台调整提示词或知识库，前端无需修改代码（仅需确保 `.env` 配置正确）。

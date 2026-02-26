@@ -20,6 +20,10 @@ Desktop.ini
 # Testing
 coverage
 
+# Caches
+.eslintcache
+*.tsbuildinfo
+
 # Environment Variables
 .env
 .env.development.local

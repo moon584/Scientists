@@ -2,7 +2,6 @@ import { Routes, Route } from "react-router-dom";
 import { useState, useEffect, lazy, Suspense } from "react";
 import { AuthContext } from '@/contexts/authContext';
 import { useTheme } from './hooks/useTheme';
-import DifyChatbot from './components/DifyChatbot';
 
 const Home = lazy(() => import("@/pages/Home"));
 const ScientistDetail = lazy(() => import("@/pages/ScientistDetail"));
@@ -45,7 +44,6 @@ export default function App() {
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>
-      <DifyChatbot />
     </AuthContext.Provider>
   );
 }

@@ -1,11 +1,9 @@
 /// <reference types="vite/client" />
 
-interface Window {
-  difyChatbotConfig: {
-    token: string;
-    baseUrl: string;
-    inputs?: Record<string, any>;
-    systemVariables?: Record<string, any>;
-    userVariables?: Record<string, any>;
-  };
+interface ImportMetaEnv {
+  readonly VITE_APPBUILDER_URL: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
 }

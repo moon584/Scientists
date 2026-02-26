@@ -164,6 +164,18 @@ export default function Home() {
     </div>
   </div>
 
+      {/* AI 助手 */}
+      <div className="container mx-auto px-4 py-8">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden h-[80vh] min-h-[600px]">
+          <iframe 
+            src={import.meta.env.VITE_APPBUILDER_URL} 
+            className="w-full h-[calc(100%+64px)] -mt-16 border-0"
+            allow="microphone"
+            title="科学家知识助手"
+          />
+        </div>
+      </div>
+
       {/* 科学家列表 */}
       <div className="container mx-auto px-4 py-12">
         <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-8 text-center">杰出科学家</h2>
