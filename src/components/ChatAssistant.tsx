@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import RecordRTC from 'recordrtc';
 
+// 如果配置了代理，这里可以使用相对路径，或者根据环境判断
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+
 interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -151,7 +154,7 @@ export default function ChatAssistant() {
       formData.append('audio', blob, 'recording.wav');
       
       try {
-        const response = await fetch('http://localhost:3001/api/speech-to-text', {
+        const response = await fetch(`${API_BASE_URL}/api/speech-to-text`, {
           method: 'POST',
           body: formData
         });
@@ -192,7 +195,7 @@ export default function ChatAssistant() {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:3001/api/chat', {
+      const response = await fetch(`${API_BASE_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 

@@ -13,4 +13,14 @@ function getPlugins() {
 
 export default defineConfig({
   plugins: getPlugins(),
+  server: {
+    host: true, // 允许局域网访问
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+      }
+    }
+  }
 });
