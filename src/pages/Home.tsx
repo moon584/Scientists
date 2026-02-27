@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from "react-router-dom";
 import { match } from 'pinyin-pro';
 import ScientistCard from '../components/ScientistCard';
+import ChatAssistant from '../components/ChatAssistant';
 import scientistsData from '../data/scientists.json';
 import { useTheme } from '../hooks/useTheme';
 import BackToTop from '../components/BackToTop';
@@ -166,13 +167,8 @@ export default function Home() {
 
       {/* AI 助手 */}
       <div className="container mx-auto px-4 py-8">
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden h-[80vh] min-h-[600px]">
-          <iframe 
-            src={import.meta.env.VITE_APPBUILDER_URL} 
-            className="w-full h-[calc(100%+64px)] -mt-16 border-0"
-            allow="microphone"
-            title="科学家知识助手"
-          />
+        <div className="h-[80vh] min-h-[600px]">
+          <ChatAssistant />
         </div>
       </div>
 

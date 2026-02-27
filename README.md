@@ -8,7 +8,7 @@
 - **� 数据图谱**：多维度可视化分析，包含领域分布、籍贯热点及年代跨度统计。
 - **🔍 智能检索**：按领域筛选、拼音/汉字排序、分页展示。
 - **📚 资料预览**：集成 PDF 资料预览与下载功能。
-- **🤖 AI 问答助手**：集成百度 AppBuilder 智能体，提供实时的科学家精神相关问答服务。
+- **🤖 AI 问答助手**：集成百度 AppBuilder 智能体，提供实时的科学家精神相关问答服务，支持语音输入和语音播报。
 - **🌓 沉浸体验**：支持明暗主题切换、献花致敬特效（Canvas Confetti）、Framer Motion 平滑动画。
 
 ## 🚀 快速开始
@@ -19,29 +19,51 @@
 pnpm install
 ```
 
-### 2. 配置环境变量
+### 2. 配置环境变量（统一 .env）
 
-复制示例文件创建 `.env`：
+1）在项目根目录根据示例文件创建 `.env`：
 
 ```bash
 cp .env.example .env
 ```
 
-编辑 `.env` 文件，填入你的百度 AppBuilder 应用配置（用于聊天助手）：
+2）编辑根目录下的 `.env`，填入前端与后端用到的配置：
 
 ```env
-# 百度 AppBuilder 聊天助手配置
-VITE_APPBUILDER_URL=https://appbuilder.baidu.com/s/9LXqQPf6
+# 前端：百度 AppBuilder 网页链接（用于在页面中打开智能体界面，可选）
+VITE_APPBUILDER_URL=https://appbuilder.baidu.com/s/你的AppBuilder页面链接
+
+# 后端：百度 AppBuilder 聊天助手配置
+BAIDU_API_KEY=你的百度AppBuilder_API_KEY
+BAIDU_APP_ID=你的百度AppBuilder_APP_ID
+
+# 后端：百度短语音识别配置
+BAIDU_ASR_CLIENT_ID=你的百度语音识别_API_KEY
+BAIDU_ASR_CLIENT_SECRET=你的百度语音识别_Secret_Key
+
+# 后端服务端口（可选，默认 3001）
+PORT=3001
 ```
 
-### 3. 启动开发服务
+### 3. 启动后端服务
+
+```bash
+cd server
+npm install
+npm run dev
+# 后端服务运行在 http://localhost:3001
+```
+
+### 4. 启动前端开发服务
+
+打开一个新的终端窗口：
 
 ```bash
 pnpm dev
 # 访问 http://localhost:3000
 ```
 
-### 4. 生产环境构建
+### 5. 生产环境构建
 
 ```bash
 pnpm build
@@ -54,6 +76,9 @@ pnpm build
 │   └── docs/
 │       ├── 头像/          # 科学家头像 (命名: 姓名.png)
 │       └── 相关资料/      # PDF资料 (命名: 姓名.pdf)
+├── server/                 # 后端服务
+│   ├── server.js           # Express 服务器入口（读取根目录 .env）
+│   ├── package.json        # 后端依赖
 ├── src/
 │   ├── components/         # 核心组件 (ScientistCard, BackToTop等)
 │   ├── contexts/           # 全局状态 (Auth等)
@@ -72,10 +97,11 @@ pnpm build
 - **UI 样式**：Tailwind CSS, Framer Motion
 - **数据可视化**：Recharts
 - **路由管理**：React Router v6
-- **AI 集成**：Baidu AppBuilder (Iframe)
+- **AI 集成**：Baidu AppBuilder API, Baidu Short Speech Recognition API
+- **后端服务**：Node.js, Express, Multer
 - **工具库**：pinyin-pro, canvas-confetti, react-pdf
 
 ## 📝 维护指南
 
 - **添加科学家**：在 `src/data/scientists.json` 中添加条目（注意 `field` 字段现已升级为数组格式），并将对应资源放入 `public/docs/`。
-- **更新 AI**：在百度 AppBuilder 平台调整提示词或知识库，前端无需修改代码（仅需确保 `.env` 配置正确）。
+- **更新 AI**：在百度 AppBuilder 平台调整提示词或知识库，前端无需修改代码（仅需确保根目录 `.env` 配置正确）。

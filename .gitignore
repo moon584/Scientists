@@ -30,6 +30,8 @@ coverage
 .env.test.local
 .env.production.local
 .env.local
+server/.env
+server/uploads/
 
 # Editor directories and files
 .vscode/*
