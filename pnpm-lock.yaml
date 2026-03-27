@@ -20,6 +20,9 @@ importers:
       framer-motion:
         specifier: ^12.9.2
         version: 12.10.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      marked:
+        specifier: ^17.0.5
+        version: 17.0.5
       pinyin-pro:
         specifier: ^3.28.0
         version: 3.28.0
@@ -874,6 +877,11 @@ packages:
 
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
+
+  marked@17.0.5:
+    resolution: {integrity: sha512-6hLvc0/JEbRjRgzI6wnT2P1XuM1/RrrDEX0kPt0N7jGm1133g6X7DlxFasUIx+72aKAr904GTxhSLDrd5DIlZg==}
+    engines: {node: '>= 20'}
+    hasBin: true
 
   merge2@1.4.1:
     resolution: {integrity: sha512-8q7VEgMJW4J8tcfVPy8g09NcQwZdbwFEqhe/WZkoIzjn/3TGDwtOCYtXGxA3O8tPzpczCCDgv+P2P5y00ZJOOg==}
@@ -1960,6 +1968,8 @@ snapshots:
   lru-cache@5.1.1:
     dependencies:
       yallist: 3.1.1
+
+  marked@17.0.5: {}
 
   merge2@1.4.1: {}
 
