@@ -1,9 +1,13 @@
 import { useState, useRef, useEffect } from "react";
 import RecordRTC from "recordrtc";
-import { marked } from "marked"; // 新增导入
+import { marked } from "marked";
 
-// 如果配置了代理，这里可以使用相对路径，或者根据环境判断
 const API_BASE_URL = import.meta.env.VITE_API_URL || "";
+
+marked.setOptions({
+  gfm: true,
+  breaks: true,
+});
 
 interface Message {
   id: string;
@@ -12,12 +16,27 @@ interface Message {
   htmlContent?: string;
 }
 
+const renderMarkdownToHtml = async (content: string) => {
+  const normalizedContent = content
+    .replace(/\r\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .trim();
+
+  try {
+    return await marked.parse(normalizedContent);
+  } catch (error) {
+    console.error("Markdown parse error:", error);
+    return normalizedContent.replace(/\n/g, "<br />");
+  }
+};
+
 export default function ChatAssistant() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
       role: "assistant",
-      content: "您好！我是科学家知识助手。您可以输入文字或点击麦克风向我提问。",
+      content:
+        "你好呀，我是愿意和你掏心窝子的中国科学家问答助手。想不想知道课本里的‘科学大家’，在光环背后经历过怎样的历练和挣扎？如果你正为生活里的难题焦虑，或是好奇‘科学家精神’到底是什么——不管是想读懂‘严谨、拼搏、创新’的真实含义，还是想找个‘过来人’聊聊如何在迷茫里坚持，都可以和我说。我会用最接地气的话，陪你感受科学里的温度与力量。你可以输入文字或点击麦克风向我提问。",
     },
   ]);
   const [input, setInput] = useState("");
@@ -44,27 +63,24 @@ export default function ChatAssistant() {
   // 语音播报
   const speak = (text: string) => {
     if (!window.speechSynthesis || isMuted) return;
-    window.speechSynthesis.cancel(); // 停止当前播报
+    window.speechSynthesis.cancel();
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "zh-CN";
 
-    // 尝试寻找中文男声
     const voices = window.speechSynthesis.getVoices();
 
-    // 优先寻找明确的男声标识，特别是 Edge 的高质量男声
     let targetVoice = voices.find(
       (voice) =>
         voice.lang.includes("zh") &&
-        (voice.name.includes("Yunxi") || // Edge 常见高质量男声 (云希)
-          voice.name.includes("Yunjian") || // Edge 常见高质量男声 (云健)
-          voice.name.includes("Yunze") || // Edge 常见高质量男声 (云泽)
-          voice.name.includes("Kangkang") || // Windows 常见男声
+        (voice.name.includes("Yunxi") ||
+          voice.name.includes("Yunjian") ||
+          voice.name.includes("Yunze") ||
+          voice.name.includes("Kangkang") ||
           voice.name.toLowerCase().includes("male") ||
           voice.name.includes("男")),
     );
 
-    // 如果没找到明确的男声，则寻找任何不是常见女声的中文声音
     if (!targetVoice) {
       targetVoice = voices.find(
         (voice) =>
@@ -78,7 +94,6 @@ export default function ChatAssistant() {
       );
     }
 
-    // 如果还是没找到，就随便选一个中文声音
     if (!targetVoice) {
       targetVoice = voices.find((voice) => voice.lang.includes("zh"));
     }
@@ -87,17 +102,15 @@ export default function ChatAssistant() {
       utterance.voice = targetVoice;
     }
 
-    // 针对 Edge 的高质量男声，不需要过度降调，否则会失真
     if (
       targetVoice &&
       (targetVoice.name.includes("Yunxi") ||
         targetVoice.name.includes("Yunjian") ||
         targetVoice.name.includes("Yunze"))
     ) {
-      utterance.pitch = 1.0; // 保持原声
-      utterance.rate = 1.0; // 保持正常语速
+      utterance.pitch = 1.0;
+      utterance.rate = 1.0;
     } else {
-      // 如果是普通声音，稍微降低音调让其更像男声
       utterance.pitch = 0.8;
       utterance.rate = 0.95;
     }
@@ -105,7 +118,6 @@ export default function ChatAssistant() {
     window.speechSynthesis.speak(utterance);
   };
 
-  // 确保声音列表加载完成
   useEffect(() => {
     if (window.speechSynthesis) {
       window.speechSynthesis.onvoiceschanged = () => {
@@ -113,7 +125,6 @@ export default function ChatAssistant() {
       };
     }
 
-    // 组件卸载时清理录音资源
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
@@ -133,8 +144,8 @@ export default function ChatAssistant() {
         type: "audio",
         mimeType: "audio/wav",
         recorderType: RecordRTC.StereoAudioRecorder,
-        desiredSampRate: 16000, // 百度要求 16000 或 8000
-        numberOfAudioChannels: 1, // 百度要求单声道
+        desiredSampRate: 16000,
+        numberOfAudioChannels: 1,
       });
 
       recorder.startRecording();
@@ -155,12 +166,10 @@ export default function ChatAssistant() {
     recorderRef.current.stopRecording(async () => {
       const blob = recorderRef.current!.getBlob();
 
-      // 停止麦克风流
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
 
-      // 发送到后端进行语音识别
       const formData = new FormData();
       formData.append("audio", blob, "recording.wav");
 
@@ -229,27 +238,18 @@ export default function ChatAssistant() {
         setConversationId(data.conversation_id);
       }
 
-      // 在 sendMessage 中
       const markdownText = data.answer || "抱歉，我暂时无法回答这个问题。";
-      let htmlContent = "";
-
-      try {
-        // 将 Markdown 转换为 HTML
-        htmlContent = await marked.parse(markdownText);
-      } catch (error) {
-        console.error("Markdown parse error:", error);
-        htmlContent = markdownText; // 转换失败则使用纯文本
-      }
+      const htmlContent = await renderMarkdownToHtml(markdownText);
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: markdownText, // 纯文本用于语音播报
-        htmlContent: htmlContent, // 新增字段用于渲染
+        content: markdownText,
+        htmlContent: htmlContent,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
-      speak(markdownText); // 语音播报仍使用纯文本
+      speak(markdownText);
     } catch (error) {
       console.error("Chat error:", error);
       setMessages((prev) => [
@@ -263,6 +263,12 @@ export default function ChatAssistant() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // 预设问题点击处理
+  const handlePresetQuestion = (question: string) => {
+    setInput(question);
+    setTimeout(() => sendMessage(), 0);
   };
 
   return (
@@ -287,7 +293,7 @@ export default function ChatAssistant() {
               科学家知识助手
             </h3>
             <p className="text-xs text-red-100 opacity-90 font-light">
-              基于百度 AppBuilder 驱动
+              智汇科迹团队
             </p>
           </div>
         </div>
@@ -314,37 +320,15 @@ export default function ChatAssistant() {
       </div>
 
       {/* 消息区域 */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-gray-50/50 dark:bg-gray-900/50 scroll-smooth">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 space-y-6 bg-gray-50/50 dark:bg-gray-900/50 scroll-smooth">
         {messages.map((msg) => (
           <div
             key={msg.id}
-            className={`flex gap-4 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
+            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
           >
-            {/* 头像 */}
-            <div className="flex-shrink-0 mt-0.5">
-              {msg.role === "assistant" ? (
-                <div className="w-9 h-9 rounded-full bg-white overflow-hidden flex items-center justify-center border border-gray-200 shadow-sm">
-                  <img
-                    src="/docs/头像/ai-avatar.png"
-                    alt="AI"
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = "none";
-                      e.currentTarget.parentElement!.innerHTML =
-                        '<i class="fas fa-robot text-red-600 text-sm"></i>';
-                    }}
-                  />
-                </div>
-              ) : (
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center text-white shadow-sm">
-                  <i className="fas fa-user text-sm"></i>
-                </div>
-              )}
-            </div>
-
-            {/* 消息气泡 */}
+            {/* 消息气泡 - 最大化宽度 */}
             <div
-              className={`max-w-[75%] px-5 py-3.5 text-[15px] leading-relaxed shadow-sm ${
+              className={`max-w-[100%] min-w-0 px-5 py-3.5 text-[15px] leading-relaxed shadow-sm break-words overflow-x-hidden ${
                 msg.role === "user"
                   ? "bg-red-600 text-white rounded-2xl rounded-tr-sm"
                   : "bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-100 dark:border-gray-700 rounded-2xl rounded-tl-sm"
@@ -352,31 +336,54 @@ export default function ChatAssistant() {
             >
               {msg.role === "assistant" && msg.htmlContent ? (
                 <div
-                  className="whitespace-pre-wrap prose prose-sm max-w-none dark:prose-invert"
+                  className="whitespace-pre-wrap prose prose-sm max-w-none dark:prose-invert overflow-x-hidden [&_*]:break-words [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre]:overflow-x-auto"
                   dangerouslySetInnerHTML={{ __html: msg.htmlContent }}
                 />
               ) : (
-                <p className="whitespace-pre-wrap">{msg.content}</p>
+                <p className="whitespace-pre-wrap break-words">{msg.content}</p>
               )}
             </div>
           </div>
         ))}
+
+        {/* 预设问题 - 仅在初始状态显示 */}
+        {messages.length === 1 && (
+          <div className="mt-2 space-y-2">
+            <button
+              onClick={() =>
+                handlePresetQuestion(
+                  "我数学/物理总是学不好，是不是我就不是“这块料”？",
+                )
+              }
+              className="block w-full text-left text-sm text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 px-4 py-2 rounded-lg transition-colors"
+            >
+              我数学/物理总是学不好，是不是我就不是“这块料”？
+            </button>
+            <button
+              onClick={() =>
+                handlePresetQuestion(
+                  "我不知道以后要做什么，也不知道学这些有什么用，为什么要努力？",
+                )
+              }
+              className="block w-full text-left text-sm text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 px-4 py-2 rounded-lg transition-colors"
+            >
+              我不知道以后要做什么，也不知道学这些有什么用，为什么要努力？
+            </button>
+            <button
+              onClick={() =>
+                handlePresetQuestion(
+                  "我成绩中游，不出彩，保研没希望，找工作也没方向，感觉被“卡”住了，怎么办？",
+                )
+              }
+              className="block w-full text-left text-sm text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-800 px-4 py-2 rounded-lg transition-colors"
+            >
+              我成绩中游，不出彩，保研没希望，找工作也没方向，感觉被“卡”住了，怎么办？
+            </button>
+          </div>
+        )}
+
         {isLoading && (
-          <div className="flex gap-4 flex-row">
-            <div className="flex-shrink-0 mt-0.5">
-              <div className="w-9 h-9 rounded-full bg-white overflow-hidden flex items-center justify-center border border-gray-200 shadow-sm">
-                <img
-                  src="/docs/头像/ai-avatar.png"
-                  alt="AI"
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
-                    e.currentTarget.parentElement!.innerHTML =
-                      '<i class="fas fa-robot text-red-600 text-sm"></i>';
-                  }}
-                />
-              </div>
-            </div>
+          <div className="flex justify-start">
             <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl rounded-tl-sm px-5 py-4 shadow-sm flex gap-1.5 items-center h-[50px]">
               <div className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></div>
               <div

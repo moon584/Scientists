@@ -46,6 +46,11 @@ body {
   height: 8px;
 }
 
+body,html{
+  overflow-x: hidden;
+}
+
+
 ::-webkit-scrollbar-track {
   background: var(--color-background-light);
 }
