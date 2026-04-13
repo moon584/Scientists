@@ -16,14 +16,23 @@ interface Message {
   htmlContent?: string;
 }
 
-const renderMarkdownToHtml = async (content: string) => {
+interface StreamEventPayload {
+  text?: string;
+  conversation_id?: string;
+  error?: string;
+}
+
+const renderMarkdownToHtml = (content: string) => {
   const normalizedContent = content
     .replace(/\r\n/g, "\n")
     .replace(/\\n/g, "\n")
     .trim();
 
   try {
-    return await marked.parse(normalizedContent);
+    const parsed = marked.parse(normalizedContent);
+    return typeof parsed === "string"
+      ? parsed
+      : normalizedContent.replace(/\n/g, "<br />");
   } catch (error) {
     console.error("Markdown parse error:", error);
     return normalizedContent.replace(/\n/g, "<br />");
@@ -219,6 +228,16 @@ export default function ChatAssistant() {
     setIsLoading(true);
 
     try {
+      const assistantMessageId = (Date.now() + 1).toString();
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: assistantMessageId,
+          role: "assistant",
+          content: "",
+        },
+      ]);
+
       const response = await fetch(`${API_BASE_URL}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -232,30 +251,126 @@ export default function ChatAssistant() {
         throw new Error("Network response was not ok");
       }
 
-      const data = await response.json();
-
-      if (data.conversation_id) {
-        setConversationId(data.conversation_id);
+      if (!response.body) {
+        throw new Error("Response body is empty");
       }
 
-      const markdownText = data.answer || "抱歉，我暂时无法回答这个问题。";
-      const htmlContent = await renderMarkdownToHtml(markdownText);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
 
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: markdownText,
-        htmlContent: htmlContent,
+      let streamBuffer = "";
+      let eventType = "message";
+      let eventDataLines: string[] = [];
+      let assistantContent = "";
+      let streamEnded = false;
+
+      const appendAssistantText = (text: string) => {
+        if (!text) return;
+        assistantContent += text;
+        const htmlContent = renderMarkdownToHtml(assistantContent);
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessageId
+              ? { ...msg, content: assistantContent, htmlContent }
+              : msg,
+          ),
+        );
       };
 
-      setMessages((prev) => [...prev, assistantMessage]);
-      speak(markdownText);
+      const processEvent = (type: string, rawData: string) => {
+        if (!rawData) return;
+
+        let payload: StreamEventPayload | null = null;
+        try {
+          payload = JSON.parse(rawData) as StreamEventPayload;
+        } catch {
+          return;
+        }
+
+        if (type === "meta" && payload.conversation_id) {
+          setConversationId(payload.conversation_id);
+          return;
+        }
+
+        if (type === "chunk" && payload.text) {
+          appendAssistantText(payload.text);
+          return;
+        }
+
+        if (type === "error") {
+          throw new Error(payload.error || "流式响应失败");
+        }
+
+        if (type === "done") {
+          streamEnded = true;
+        }
+      };
+
+      const flushSSELine = (line: string) => {
+        if (line.startsWith("event:")) {
+          eventType = line.slice(6).trim() || "message";
+          return;
+        }
+
+        if (line.startsWith("data:")) {
+          eventDataLines.push(line.slice(5).trim());
+          return;
+        }
+
+        if (line === "") {
+          const rawData = eventDataLines.join("\n");
+          if (rawData) {
+            processEvent(eventType, rawData);
+          }
+          eventType = "message";
+          eventDataLines = [];
+        }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        streamBuffer += decoder.decode(value, { stream: true });
+        const lines = streamBuffer.replace(/\r\n/g, "\n").split("\n");
+        streamBuffer = lines.pop() || "";
+
+        for (const line of lines) {
+          flushSSELine(line);
+        }
+      }
+
+      if (streamBuffer) {
+        flushSSELine(streamBuffer);
+      }
+      flushSSELine("");
+
+      if (!assistantContent && streamEnded) {
+        assistantContent = "抱歉，我暂时无法回答这个问题。";
+      }
+
+      const htmlContent = renderMarkdownToHtml(assistantContent);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMessageId
+            ? { ...msg, content: assistantContent, htmlContent }
+            : msg,
+        ),
+      );
+      speak(assistantContent);
     } catch (error) {
       console.error("Chat error:", error);
       setMessages((prev) => [
-        ...prev,
+        ...prev.filter(
+          (msg) =>
+            !(
+              msg.role === "assistant" &&
+              msg.content === "" &&
+              msg.htmlContent === undefined
+            ),
+        ),
         {
-          id: Date.now().toString(),
+          id: `${Date.now()}-error`,
           role: "assistant",
           content: "网络请求失败，请检查后端服务是否启动。",
         },
@@ -334,10 +449,12 @@ export default function ChatAssistant() {
                   : "bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-100 dark:border-gray-700 rounded-2xl rounded-tl-sm"
               }`}
             >
-              {msg.role === "assistant" && msg.htmlContent ? (
+              {msg.role === "assistant" ? (
                 <div
                   className="whitespace-pre-wrap prose prose-sm max-w-none dark:prose-invert overflow-x-hidden [&_*]:break-words [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre]:overflow-x-auto"
-                  dangerouslySetInnerHTML={{ __html: msg.htmlContent }}
+                  dangerouslySetInnerHTML={{
+                    __html: msg.htmlContent || renderMarkdownToHtml(msg.content),
+                  }}
                 />
               ) : (
                 <p className="whitespace-pre-wrap break-words">{msg.content}</p>

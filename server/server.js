@@ -33,6 +33,18 @@ const PORT = process.env.PORT || 3001;
 
 // 百度 AppBuilder API 接口
 const BAIDU_API_URL = 'https://qianfan.baidubce.com/v2/app/conversation/runs';
+const LOG_DIR = path.resolve(__dirname, 'logs');
+const CHAT_LOG_FILE = path.join(LOG_DIR, 'chat.log');
+
+if (!fs.existsSync(LOG_DIR)) {
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+}
+
+function logChat(stage, payload) {
+  const line = `[${new Date().toISOString()}][chat][${stage}] ${JSON.stringify(payload)}`;
+  console.log(line);
+  fs.appendFileSync(CHAT_LOG_FILE, `${line}\n`, 'utf8');
+}
 
 // 获取百度语音识别 Access Token
 async function getBaiduAccessToken() {
@@ -99,11 +111,20 @@ app.post('/api/speech-to-text', upload.single('audio'), async (req, res) => {
 app.post('/api/chat', async (req, res) => {
   try {
     const { query, conversation_id } = req.body;
+    const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    let resolvedConversationId = conversation_id || null;
+    let assistantReply = '';
+
+    logChat('request', {
+      requestId,
+      conversation_id: resolvedConversationId,
+      query
+    });
     
     const requestBody = {
       app_id: process.env.BAIDU_APP_ID,
       query: query,
-      stream: false
+      stream: true
     };
 
     if (conversation_id) {
@@ -123,12 +144,136 @@ app.post('/api/chat', async (req, res) => {
       const errorData = await response.text();
       throw new Error(`Baidu API Error: ${response.status} - ${errorData}`);
     }
+    
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    if (typeof res.flushHeaders === 'function') {
+      res.flushHeaders();
+    }
 
-    const data = await response.json();
-    res.json(data);
+    const writeEvent = (event, data) => {
+      res.write(`event: ${event}\n`);
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    if (!response.body) {
+      throw new Error('Baidu API stream body is empty');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let lastAnswer = '';
+
+    req.on('close', () => {
+      reader.cancel().catch(() => {});
+    });
+
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line.startsWith('data:')) continue;
+
+        const payload = line.slice(5).trim();
+        if (!payload) continue;
+        if (payload === '[DONE]') {
+          logChat('response', {
+            requestId,
+            conversation_id: resolvedConversationId,
+            query,
+            answer: assistantReply
+          });
+          writeEvent('done', { done: true });
+          res.end();
+          return;
+        }
+
+        let data;
+        try {
+          data = JSON.parse(payload);
+        } catch {
+          continue;
+        }
+
+        if (data.conversation_id) {
+          resolvedConversationId = data.conversation_id;
+          writeEvent('meta', { conversation_id: data.conversation_id });
+        }
+
+        if (typeof data.answer === 'string' && data.answer.length > 0) {
+          const delta = data.answer.startsWith(lastAnswer)
+            ? data.answer.slice(lastAnswer.length)
+            : data.answer;
+          if (delta) {
+            assistantReply += delta;
+            writeEvent('chunk', { text: delta });
+          }
+          lastAnswer = data.answer;
+          continue;
+        }
+
+        if (typeof data.content === 'string' && data.content.length > 0) {
+          assistantReply += data.content;
+          writeEvent('chunk', { text: data.content });
+        }
+      }
+    }
+
+    if (buffer.trim().startsWith('data:')) {
+      const payload = buffer.trim().slice(5).trim();
+      if (payload && payload !== '[DONE]') {
+        try {
+          const data = JSON.parse(payload);
+          if (data.conversation_id) {
+            resolvedConversationId = data.conversation_id;
+            writeEvent('meta', { conversation_id: data.conversation_id });
+          }
+          if (typeof data.answer === 'string' && data.answer.length > 0) {
+            const delta = data.answer.startsWith(lastAnswer)
+              ? data.answer.slice(lastAnswer.length)
+              : data.answer;
+            if (delta) {
+              assistantReply += delta;
+              writeEvent('chunk', { text: delta });
+            }
+          } else if (typeof data.content === 'string' && data.content.length > 0) {
+            assistantReply += data.content;
+            writeEvent('chunk', { text: data.content });
+          }
+        } catch {
+          // Ignore malformed tail payload
+        }
+      }
+    }
+
+    logChat('response', {
+      requestId,
+      conversation_id: resolvedConversationId,
+      query,
+      answer: assistantReply
+    });
+    writeEvent('done', { done: true });
+    res.end();
   } catch (error) {
     console.error('Error calling Baidu API:', error);
-    res.status(500).json({ error: error.message });
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message });
+      return;
+    }
+    res.write(`event: error\ndata: ${JSON.stringify({ error: error.message })}\n\n`);
+    res.end();
   }
 });
 

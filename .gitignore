@@ -32,6 +32,7 @@ coverage
 .env.local
 server/.env
 server/uploads/
+server/logs/
 
 # Editor directories and files
 .vscode/*
