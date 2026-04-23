@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import RecordRTC from "recordrtc";
 import { marked } from "marked";
+import { useAuth } from "@/contexts/authContext";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "";
 
@@ -39,20 +40,99 @@ const renderMarkdownToHtml = (content: string) => {
   }
 };
 
+interface ChatSession {
+  id: number;
+  baidu_conversation_id: string;
+  title: string;
+  message_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+const CACHE_KEY = 'chat_cache';
+
+interface ChatCache {
+  messages: Message[];
+  conversationId: string | null;
+  sessionId: number | null;
+  timestamp: number;
+}
+
+const WELCOME_MESSAGE: Message = {
+  id: "1",
+  role: "assistant",
+  content:
+    "你好呀，我是愿意和你掏心窝子的中国科学家问答助手。想不想知道课本里的‘科学大家’，在光环背后经历过怎样的历练和挣扎？如果你正为生活里的难题焦虑，或是好奇‘科学家精神’到底是什么——不管是想读懂‘严谨、拼搏、创新’的真实含义，还是想找个‘过来人’聊聊如何在迷茫里坚持，都可以和我说。我会用最接地气的话，陪你感受科学里的温度与力量。你可以输入文字或点击麦克风向我提问。",
+};
+
+/** 从 localStorage 恢复上次对话缓存 */
+function restoreCache(): ChatCache | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const cache = JSON.parse(raw) as ChatCache;
+    // 超过 1 小时的缓存不恢复
+    if (Date.now() - cache.timestamp > 3600000) {
+      localStorage.removeItem(CACHE_KEY);
+      return null;
+    }
+    return cache;
+  } catch {
+    localStorage.removeItem(CACHE_KEY);
+    return null;
+  }
+}
+
+/** 保存对话到 localStorage */
+function saveCache(messages: Message[], conversationId: string | null, sessionId: number | null) {
+  try {
+    const cache: ChatCache = { messages, conversationId, sessionId, timestamp: Date.now() };
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+  } catch { /* localStorage 满时静默失败 */ }
+}
+
+/** 清除缓存 */
+function clearCache() {
+  localStorage.removeItem(CACHE_KEY);
+}
+
+/** 格式化会话标题：取前15个有效字符 + MM/DD */
+function formatSessionTitle(title: string, updatedAt: string): string {
+  const cleaned = title.replace(/^[^\w\d一-鿿]+/g, '');
+  const truncated = cleaned.length > 15 ? cleaned.slice(0, 15) + '...' : cleaned;
+  const date = updatedAt ? new Date(updatedAt) : new Date();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  return `${truncated} ${month}/${day}`;
+}
+
 export default function ChatAssistant() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      role: "assistant",
-      content:
-        "你好呀，我是愿意和你掏心窝子的中国科学家问答助手。想不想知道课本里的‘科学大家’，在光环背后经历过怎样的历练和挣扎？如果你正为生活里的难题焦虑，或是好奇‘科学家精神’到底是什么——不管是想读懂‘严谨、拼搏、创新’的真实含义，还是想找个‘过来人’聊聊如何在迷茫里坚持，都可以和我说。我会用最接地气的话，陪你感受科学里的温度与力量。你可以输入文字或点击麦克风向我提问。",
-    },
-  ]);
+  const { token, isAuthenticated } = useAuth();
+
+  // 从 localStorage 恢复上次的对话（先于网络请求，实现无缝跳转）
+  const [initialState] = useState(() => {
+    const cached = restoreCache();
+    if (cached && cached.messages.length > 0) {
+      return cached;
+    }
+    return null;
+  });
+
+  const [messages, setMessages] = useState<Message[]>(
+    initialState?.messages ?? [WELCOME_MESSAGE]
+  );
   const [input, setInput] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
-  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(
+    initialState?.conversationId ?? null
+  );
+  const [currentSessionId, setCurrentSessionId] = useState<number | null>(
+    initialState?.sessionId ?? null
+  );
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -60,6 +140,71 @@ export default function ChatAssistant() {
   const streamRef = useRef<MediaStream | null>(null);
 
   const [isMuted, setIsMuted] = useState(false);
+
+  // 自动保存对话到 localStorage（跳转页面后恢复）
+  useEffect(() => {
+    if (messages.length > 1 || messages[0]?.id !== "1") {
+      saveCache(messages, conversationId, currentSessionId);
+    }
+  }, [messages, conversationId, currentSessionId]);
+
+  // 登录后自动展开侧栏并加载会话列表
+  useEffect(() => {
+    if (isAuthenticated && token) {
+      setSidebarOpen(true);
+      fetch(`${API_BASE_URL}/api/chat/sessions`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          const list = data.sessions || [];
+          setSessions(list);
+          // 尝试从缓存恢复上次的会话 ID
+          const savedId = sessionStorage.getItem('chat_session_id');
+          if (savedId && list.some((s: ChatSession) => s.id === Number(savedId))) {
+            loadSessionMessages(Number(savedId));
+            sessionStorage.removeItem('chat_session_id');
+          }
+        })
+        .catch(console.error);
+    } else {
+      setSessions([]);
+      setCurrentSessionId(null);
+      setSidebarOpen(false);
+    }
+  }, [isAuthenticated, token]);
+
+  // 加载指定会话的消息
+  const loadSessionMessages = async (sessionId: number) => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/chat/sessions/${sessionId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const loadedMessages: Message[] = data.messages.map((m: any) => ({
+        id: `s${m.id}`,
+        role: m.role,
+        content: m.content,
+        htmlContent: m.role === "assistant" ? renderMarkdownToHtml(m.content) : undefined,
+      }));
+      setMessages(loadedMessages.length > 0 ? loadedMessages : [WELCOME_MESSAGE]);
+      setCurrentSessionId(sessionId);
+      setConversationId(data.session?.baidu_conversation_id || null);
+      clearCache(); // 切到旧会话时清掉缓存，新消息会重新缓存
+    } catch (err) {
+      console.error("加载会话失败:", err);
+    }
+  };
+
+  const startNewChat = () => {
+    setMessages([WELCOME_MESSAGE]);
+    setConversationId(null);
+    setCurrentSessionId(null);
+    clearCache();
+    sessionStorage.removeItem('chat_session_id');
+  };
 
   // 自动调整输入框高度
   useEffect(() => {
@@ -240,7 +385,10 @@ export default function ChatAssistant() {
 
       const response = await fetch(`${API_BASE_URL}/api/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           query: userMessage.content,
           conversation_id: conversationId,
@@ -380,6 +528,22 @@ export default function ChatAssistant() {
     }
   };
 
+  const deleteSession = async (e: React.MouseEvent, sessionId: number) => {
+    e.stopPropagation();
+    if (!token) return;
+    if (!confirm('确定删除此对话？删除后不可恢复。')) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/chat/sessions/${sessionId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+        if (currentSessionId === sessionId) startNewChat();
+      }
+    } catch { /* ignore */ }
+  };
+
   // 预设问题点击处理
   const handlePresetQuestion = (question: string) => {
     setInput(question);
@@ -387,10 +551,67 @@ export default function ChatAssistant() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-gray-900 rounded-2xl shadow-xl overflow-hidden border border-gray-100 dark:border-gray-800 transition-colors duration-300">
-      {/* 头部 */}
-      <div className="bg-gradient-to-r from-red-600 to-red-500 text-white px-6 py-4 flex items-center justify-between shadow-sm z-10">
-        <div className="flex items-center gap-3">
+    <div className="relative flex h-full bg-white dark:bg-gray-900 rounded-2xl shadow-xl overflow-hidden border border-gray-100 dark:border-gray-800 transition-colors duration-300">
+      {isAuthenticated && (
+        <>
+          {/* 移动端遮罩 */}
+          {sidebarOpen && (
+            <div className="fixed inset-0 z-30 bg-black/30 sm:hidden" onClick={() => setSidebarOpen(false)} />
+          )}
+
+          {/* 左侧栏 */}
+          <div className={`absolute inset-y-0 left-0 z-20 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-300 overflow-hidden ${sidebarOpen ? 'w-[260px]' : 'w-0'}`}>
+            {/* 侧栏头部 */}
+            <div className="flex items-center justify-between p-3 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">历史记录</span>
+              <div className="flex items-center gap-1">
+                <button onClick={startNewChat} className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500" title="新对话">
+                  <i className="fas fa-plus text-xs"></i>
+                </button>
+                <button onClick={() => setSidebarOpen(false)} className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500" title="收起侧栏">
+                  <i className="fas fa-chevron-left text-xs"></i>
+                </button>
+              </div>
+            </div>
+
+            {/* 会话列表 */}
+            <div className="flex-1 overflow-y-auto">
+              {sessions.length === 0 ? (
+                <p className="p-4 text-center text-sm text-gray-400">暂无历史对话</p>
+              ) : (
+                sessions.map((s) => (
+                  <div
+                    key={s.id}
+                    className={`flex items-center gap-1 px-3 py-2.5 text-sm border-b border-gray-50 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer ${currentSessionId === s.id ? 'bg-red-50 dark:bg-red-900/10 border-l-2 border-l-red-500' : ''}`}
+                    onClick={() => {
+                      loadSessionMessages(s.id);
+                      if (window.innerWidth < 640) setSidebarOpen(false);
+                    }}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-800 dark:text-gray-200 truncate">{formatSessionTitle(s.title, s.updated_at)}</p>
+                    </div>
+                    <button onClick={(e) => deleteSession(e, s.id)} className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="删除此对话">
+                      <i className="fas fa-trash-can text-xs"></i>
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 主内容区域 */}
+      <div className={`flex flex-col flex-1 transition-all duration-300 ${sidebarOpen ? 'sm:ml-[260px]' : 'ml-0'}`}>
+        {/* 头部 */}
+        <div className="relative bg-gradient-to-r from-red-600 to-red-500 text-white px-6 py-4 flex items-center justify-between shadow-sm z-10">
+          <div className="flex items-center gap-3">
+            {isAuthenticated && (
+              <button onClick={() => setSidebarOpen(!sidebarOpen)} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors" title={sidebarOpen ? '收起侧栏' : '展开侧栏'}>
+                <i className={`fas ${sidebarOpen ? 'fa-xmark' : 'fa-bars'} text-sm`}></i>
+              </button>
+            )}
           <div className="w-10 h-10 rounded-full bg-white overflow-hidden flex items-center justify-center border-2 border-red-200/50 shadow-inner">
             <img
               src="/docs/头像/ai-avatar.png"
@@ -404,12 +625,10 @@ export default function ChatAssistant() {
             />
           </div>
           <div>
-            <h3 className="font-semibold text-lg tracking-wide">
-              科学家知识助手
-            </h3>
-            <p className="text-xs text-red-100 opacity-90 font-light">
-              智汇科迹团队
-            </p>
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold text-lg tracking-wide">科学家知识助手</h3>
+            </div>
+            <p className="text-xs text-red-100 opacity-90 font-light">智汇科迹团队</p>
           </div>
         </div>
         <button
@@ -433,6 +652,7 @@ export default function ChatAssistant() {
           ></i>
         </button>
       </div>
+
 
       {/* 消息区域 */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden p-6 space-y-6 bg-gray-50/50 dark:bg-gray-900/50 scroll-smooth">
@@ -581,6 +801,7 @@ export default function ChatAssistant() {
             <i className="fas fa-paper-plane ml-[-2px]"></i>
           </button>
         </div>
+      </div>
       </div>
     </div>
   );

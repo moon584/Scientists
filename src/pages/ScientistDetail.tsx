@@ -2,10 +2,14 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useParams, useNavigate } from "react-router-dom";
 import confetti from 'canvas-confetti';
+import { toast } from 'sonner';
 import scientistsData from "../data/scientists.json";
 import { useTheme } from "../hooks/useTheme";
+import { useAuth } from "@/contexts/authContext";
 import ScientistAvatar from "../components/ScientistAvatar";
 import BackToTop from "../components/BackToTop";
+
+const API_BASE = import.meta.env.VITE_API_URL || "";
 
 interface Scientist {
     id: string;
@@ -26,6 +30,7 @@ export default function ScientistDetail() {
     }>();
 
     const navigate = useNavigate();
+    const { token, isAuthenticated } = useAuth();
     const [scientist, setScientist] = useState<Scientist | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [tributeCount, setTributeCount] = useState(0);
@@ -43,13 +48,29 @@ export default function ScientistDetail() {
         const timer = setTimeout(() => {
             const index = scientistsData.findIndex(s => s.id === id);
             const foundScientist = scientistsData[index];
-            
+
             if (foundScientist) {
                 setScientist(foundScientist);
-                // 恢复致敬数
+                // 恢复致敬数（优先使用 localStorage 中的个人计数）
                 const savedTribute = localStorage.getItem(`tribute_${id}`);
                 setTributeCount(savedTribute ? parseInt(savedTribute) : 0);
-                
+
+                // 如果已登录，同步获取服务器总献花数
+                if (token && id) {
+                    fetch(`${API_BASE}/api/tributes/stats`)
+                        .then(r => r.json())
+                        .then(data => {
+                            const scientistStat = (data.stats || []).find(
+                                (s: any) => s.scientist_id === id
+                            );
+                            if (scientistStat) {
+                                setTributeCount(scientistStat.total_tributes);
+                                localStorage.setItem(`tribute_${id}`, scientistStat.total_tributes.toString());
+                            }
+                        })
+                        .catch(() => {});
+                }
+
                 // 计算上一位和下一位
                 const prevIndex = (index - 1 + scientistsData.length) % scientistsData.length;
                 const nextIndex = (index + 1) % scientistsData.length;
@@ -62,15 +83,43 @@ export default function ScientistDetail() {
         }, 300);
 
         return () => clearTimeout(timer);
-    }, [id]);
+    }, [id, token]);
 
-    const handleTribute = () => {
+    const handleTribute = async () => {
         const newCount = tributeCount + 1;
         setTributeCount(newCount);
-        if (id) {
+
+        // 已登录用户：同步到后端
+        if (token && id) {
+            try {
+                const res = await fetch(`${API_BASE}/api/tributes`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify({ scientist_id: id }),
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    setTributeCount(data.total);
+                    localStorage.setItem(`tribute_${id}`, data.total.toString());
+                } else if (res.status === 429) {
+                    // 达到每日上限，恢复原计数并提示
+                    setTributeCount(tributeCount);
+                    toast.error(data.error || '今日献花已达上限');
+                } else {
+                    throw new Error(data.error || '请求失败');
+                }
+            } catch {
+                // 后端不可用时降级到本地存储
+                localStorage.setItem(`tribute_${id}`, newCount.toString());
+            }
+        } else if (id) {
+            // 未登录用户：仅本地存储
             localStorage.setItem(`tribute_${id}`, newCount.toString());
         }
-        
+
         confetti({
             particleCount: 100,
             spread: 70,

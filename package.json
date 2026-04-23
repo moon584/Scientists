@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev:client": "vite --host --port 3000",
-    "dev": "pnpm dev:client",
+    "dev": "vite --host --port 3000",
     "build:client": "vite build --outDir dist/static",
-    "build": "rm -rf dist && pnpm build:client && cp package.json dist && touch dist/build.flag"
+    "build": "vite build --outDir dist/static"
   },
   "dependencies": {
     "@types/canvas-confetti": "^1.9.0",
