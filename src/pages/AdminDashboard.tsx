@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/authContext";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
-type TabKey = "users" | "chats" | "tributes" | "logs";
+type TabKey = "users" | "chats" | "logs" | "chatlogs";
 
 export default function AdminDashboard() {
   const { token, user, isAuthenticated, logout } = useAuth();
@@ -36,8 +36,8 @@ export default function AdminDashboard() {
   const tabs: { key: TabKey; label: string; icon: string }[] = [
     { key: "users", label: "用户管理", icon: "fa-users" },
     { key: "chats", label: "对话记录", icon: "fa-comments" },
-    { key: "tributes", label: "献花排行", icon: "fa-flower" },
     { key: "logs", label: "登录日志", icon: "fa-clock-rotate" },
+    { key: "chatlogs", label: "聊天日志", icon: "fa-server" },
   ];
 
   return (
@@ -67,7 +67,6 @@ export default function AdminDashboard() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard icon="fa-users" label="总用户" value={stats?.total_users ?? "-"} color="blue" />
           <StatCard icon="fa-comments" label="总对话" value={stats?.total_chats ?? "-"} color="green" />
-          <StatCard icon="fa-flower" label="总献花" value={stats?.total_tributes ?? "-"} color="red" />
           <StatCard icon="fa-right-to-bracket" label="今日登录" value={stats?.today_logins ?? "-"} color="amber" />
         </div>
 
@@ -93,8 +92,8 @@ export default function AdminDashboard() {
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
           {activeTab === "users" && <UsersPanel token={token!} />}
           {activeTab === "chats" && <ChatsPanel token={token!} />}
-          {activeTab === "tributes" && <TributesPanel />}
           {activeTab === "logs" && <LoginLogsPanel token={token!} />}
+          {activeTab === "chatlogs" && <ChatLogsPanel token={token!} />}
         </div>
       </div>
     </div>
@@ -297,54 +296,86 @@ function ChatsPanel({ token }: { token: string }) {
   );
 }
 
-/* 献花排行面板 */
-function TributesPanel() {
-  const [stats, setStats] = useState<any[]>([]);
+/* 登录日志面板 */
+/* 聊天日志面板（server/logs/chat.log） */
+function ChatLogsPanel({ token }: { token: string }) {
+  const [logs, setLogs] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const pageSize = 30;
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/tributes/stats`)
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    if (search) params.set("search", search);
+    fetch(`${API_BASE}/api/admin/chat-logs?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
       .then((r) => r.json())
-      .then((data) => setStats(data.stats || []))
+      .then((data) => { setLogs(data.logs); setTotal(data.total); })
       .catch(console.error);
-  }, []);
+  }, [page, search, token]);
+
+  const totalPages = Math.ceil(total / pageSize);
 
   return (
     <div className="p-6">
-      <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">献花排行榜</h3>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+          聊天日志 <span className="text-sm font-normal text-gray-400">(共 {total} 条)</span>
+        </h3>
+        <input
+          type="text"
+          placeholder="搜索 query 或 requestId..."
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white placeholder-gray-400 w-56"
+        />
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 dark:border-gray-700 text-gray-500 dark:text-gray-400">
-              <th className="text-left py-3 px-2">排名</th>
-              <th className="text-left py-3 px-2">科学家 ID</th>
-              <th className="text-left py-3 px-2">总献花数</th>
-              <th className="text-left py-3 px-2">献花用户数</th>
+              <th className="text-left py-3 px-2 whitespace-nowrap">时间</th>
+              <th className="text-left py-3 px-2">类型</th>
+              <th className="text-left py-3 px-2">query</th>
+              <th className="text-left py-3 px-2">answer (前200字)</th>
+              <th className="text-left py-3 px-2">conversation_id</th>
             </tr>
           </thead>
           <tbody>
-            {stats.map((s: any, i: number) => (
-              <tr key={s.scientist_id} className="border-b border-gray-50 dark:border-gray-700/50 text-gray-700 dark:text-gray-300">
+            {logs.map((l: any, i: number) => (
+              <tr key={i} className="border-b border-gray-50 dark:border-gray-700/50 text-gray-700 dark:text-gray-300">
+                <td className="py-3 px-2 text-xs text-gray-400 whitespace-nowrap">{l.time}</td>
                 <td className="py-3 px-2">
-                  {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`}
+                  {l.stage === "request" ? (
+                    <span className="px-2 py-0.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 text-xs rounded-full">请求</span>
+                  ) : (
+                    <span className="px-2 py-0.5 bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 text-xs rounded-full">响应</span>
+                  )}
                 </td>
-                <td className="py-3 px-2 font-medium">{s.scientist_id}</td>
-                <td className="py-3 px-2">
-                  <span className="font-bold text-red-600 dark:text-red-400">{s.total_tributes}</span>
-                </td>
-                <td className="py-3 px-2 text-gray-500">{s.unique_users} 人</td>
+                <td className="py-3 px-2 max-w-[300px] truncate font-medium">{l.query || "-"}</td>
+                <td className="py-3 px-2 max-w-[300px] truncate text-xs text-gray-500">{l.answer || "-"}</td>
+                <td className="py-3 px-2 text-xs text-gray-400 max-w-[200px] truncate">{l.conversation_id || "-"}</td>
               </tr>
             ))}
-            {stats.length === 0 && (
-              <tr><td colSpan={4} className="py-8 text-center text-gray-400">暂无献花记录</td></tr>
+            {logs.length === 0 && (
+              <tr><td colSpan={5} className="py-8 text-center text-gray-400">暂无聊天日志</td></tr>
             )}
           </tbody>
         </table>
       </div>
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 mt-4">
+          <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="px-3 py-1 text-sm border rounded disabled:opacity-30">上一页</button>
+          <span className="text-sm text-gray-500">{page} / {totalPages}</span>
+          <button disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="px-3 py-1 text-sm border rounded disabled:opacity-30">下一页</button>
+        </div>
+      )}
     </div>
   );
 }
 
-/* 登录日志面板 */
 function LoginLogsPanel({ token }: { token: string }) {
   const [logs, setLogs] = useState<any[]>([]);
   const [total, setTotal] = useState(0);

@@ -106,7 +106,11 @@ function formatSessionTitle(title: string, updatedAt: string): string {
   return `${truncated} ${month}/${day}`;
 }
 
-export default function ChatAssistant() {
+interface ChatAssistantProps {
+  onClose?: () => void;
+}
+
+export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
   const { token, isAuthenticated } = useAuth();
 
   // 从 localStorage 恢复上次的对话（先于网络请求，实现无缝跳转）
@@ -140,6 +144,8 @@ export default function ChatAssistant() {
   const streamRef = useRef<MediaStream | null>(null);
 
   const [isMuted, setIsMuted] = useState(false);
+  const [renamingId, setRenamingId] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState('');
 
   // 自动保存对话到 localStorage（跳转页面后恢复）
   useEffect(() => {
@@ -198,7 +204,25 @@ export default function ChatAssistant() {
     }
   };
 
-  const startNewChat = () => {
+  const startNewChat = async () => {
+    // 保存当前对话到历史记录
+    if (token && currentSessionId) {
+      const title = `对话记录${sessions.length + 1}`;
+      try {
+        await fetch(`${API_BASE_URL}/api/chat/sessions/${currentSessionId}`, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title }),
+        });
+        // 刷新会话列表
+        const res = await fetch(`${API_BASE_URL}/api/chat/sessions`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        setSessions(data.sessions || []);
+      } catch { /* ignore */ }
+    }
+
     setMessages([WELCOME_MESSAGE]);
     setConversationId(null);
     setCurrentSessionId(null);
@@ -373,16 +397,6 @@ export default function ChatAssistant() {
     setIsLoading(true);
 
     try {
-      const assistantMessageId = (Date.now() + 1).toString();
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: assistantMessageId,
-          role: "assistant",
-          content: "",
-        },
-      ]);
-
       const response = await fetch(`${API_BASE_URL}/api/chat`, {
         method: "POST",
         headers: {
@@ -406,6 +420,7 @@ export default function ChatAssistant() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
 
+      let assistantMessageId: string | null = null;
       let streamBuffer = "";
       let eventType = "message";
       let eventDataLines: string[] = [];
@@ -414,15 +429,20 @@ export default function ChatAssistant() {
 
       const appendAssistantText = (text: string) => {
         if (!text) return;
-        assistantContent += text;
-        const htmlContent = renderMarkdownToHtml(assistantContent);
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === assistantMessageId
-              ? { ...msg, content: assistantContent, htmlContent }
-              : msg,
-          ),
-        );
+        if (!assistantMessageId) {
+          assistantMessageId = (Date.now() + 1).toString();
+          assistantContent = text;
+          const htmlContent = renderMarkdownToHtml(text);
+          setMessages((prev) => [...prev, { id: assistantMessageId!, role: "assistant", content: text, htmlContent }]);
+        } else {
+          assistantContent += text;
+          const htmlContent = renderMarkdownToHtml(assistantContent);
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId ? { ...msg, content: assistantContent, htmlContent } : msg,
+            ),
+          );
+        }
       };
 
       const processEvent = (type: string, rawData: string) => {
@@ -435,8 +455,9 @@ export default function ChatAssistant() {
           return;
         }
 
-        if (type === "meta" && payload.conversation_id) {
-          setConversationId(payload.conversation_id);
+        if (type === "meta") {
+          if (payload.conversation_id) setConversationId(payload.conversation_id);
+          if (payload.session_id) setCurrentSessionId(payload.session_id);
           return;
         }
 
@@ -497,26 +518,26 @@ export default function ChatAssistant() {
         assistantContent = "抱歉，我暂时无法回答这个问题。";
       }
 
-      const htmlContent = renderMarkdownToHtml(assistantContent);
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === assistantMessageId
-            ? { ...msg, content: assistantContent, htmlContent }
-            : msg,
-        ),
-      );
-      speak(assistantContent);
+      if (assistantContent) {
+        const htmlContent = renderMarkdownToHtml(assistantContent);
+        if (assistantMessageId) {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: assistantContent.trimEnd(), htmlContent }
+                : msg,
+            ),
+          );
+        } else {
+          const fallbackId = (Date.now() + 1).toString();
+          setMessages((prev) => [...prev, { id: fallbackId, role: "assistant", content: assistantContent.trimEnd(), htmlContent }]);
+        }
+        speak(assistantContent);
+      }
     } catch (error) {
       console.error("Chat error:", error);
       setMessages((prev) => [
-        ...prev.filter(
-          (msg) =>
-            !(
-              msg.role === "assistant" &&
-              msg.content === "" &&
-              msg.htmlContent === undefined
-            ),
-        ),
+        ...prev,
         {
           id: `${Date.now()}-error`,
           role: "assistant",
@@ -526,6 +547,21 @@ export default function ChatAssistant() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const renameSession = async (sessionId: number, title: string) => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/chat/sessions/${sessionId}`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      });
+      if (res.ok) {
+        setSessions((prev) => prev.map((s) => s.id === sessionId ? { ...s, title } : s));
+      }
+    } catch { /* ignore */ }
+    setRenamingId(null);
   };
 
   const deleteSession = async (e: React.MouseEvent, sessionId: number) => {
@@ -582,18 +618,46 @@ export default function ChatAssistant() {
                 sessions.map((s) => (
                   <div
                     key={s.id}
-                    className={`flex items-center gap-1 px-3 py-2.5 text-sm border-b border-gray-50 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer ${currentSessionId === s.id ? 'bg-red-50 dark:bg-red-900/10 border-l-2 border-l-red-500' : ''}`}
+                    className={`flex items-center gap-1 px-3 py-2.5 text-sm border-b border-gray-50 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer group ${currentSessionId === s.id ? 'bg-red-50 dark:bg-red-900/10 border-l-2 border-l-red-500' : ''}`}
                     onClick={() => {
                       loadSessionMessages(s.id);
                       if (window.innerWidth < 640) setSidebarOpen(false);
                     }}
                   >
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-800 dark:text-gray-200 truncate">{formatSessionTitle(s.title, s.updated_at)}</p>
+                      {renamingId === s.id ? (
+                        <input
+                          autoFocus
+                          value={renameValue}
+                          onChange={(e) => setRenameValue(e.target.value)}
+                          onBlur={() => renameSession(s.id, renameValue)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') renameSession(s.id, renameValue);
+                            if (e.key === 'Escape') setRenamingId(null);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-full text-sm font-medium bg-gray-100 dark:bg-gray-700 rounded px-1 py-0.5 text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-red-500"
+                        />
+                      ) : (
+                        <p className="font-medium text-gray-800 dark:text-gray-200 truncate">{formatSessionTitle(s.title, s.updated_at)}</p>
+                      )}
                     </div>
-                    <button onClick={(e) => deleteSession(e, s.id)} className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="删除此对话">
-                      <i className="fas fa-trash-can text-xs"></i>
-                    </button>
+                    <div className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRenamingId(s.id);
+                          setRenameValue(s.title || '');
+                        }}
+                        className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                        title="重命名"
+                      >
+                        <i className="fas fa-pen text-xs"></i>
+                      </button>
+                      <button onClick={(e) => deleteSession(e, s.id)} className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="删除此对话">
+                        <i className="fas fa-trash-can text-xs"></i>
+                      </button>
+                    </div>
                   </div>
                 ))
               )}
@@ -627,30 +691,33 @@ export default function ChatAssistant() {
           <div>
             <div className="flex items-center gap-2">
               <h3 className="font-semibold text-lg tracking-wide">科学家知识助手</h3>
+              <button
+                onClick={() => {
+                  if (isMuted) {
+                    setIsMuted(false);
+                  } else {
+                    setIsMuted(true);
+                    window.speechSynthesis?.cancel();
+                  }
+                }}
+                className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${
+                  isMuted
+                    ? "bg-red-500/50 text-red-100 hover:bg-red-500/70"
+                    : "bg-white/10 text-white hover:bg-white/20"
+                }`}
+                title={isMuted ? "开启语音播报" : "静音"}
+              >
+                <i className={`fas ${isMuted ? "fa-volume-mute" : "fa-volume-up"} text-xs`}></i>
+              </button>
             </div>
             <p className="text-xs text-red-100 opacity-90 font-light">智汇科迹团队</p>
           </div>
         </div>
-        <button
-          onClick={() => {
-            if (isMuted) {
-              setIsMuted(false);
-            } else {
-              setIsMuted(true);
-              window.speechSynthesis?.cancel();
-            }
-          }}
-          className={`w-9 h-9 rounded-full flex items-center justify-center transition-all backdrop-blur-sm ${
-            isMuted
-              ? "bg-red-500/50 text-red-100 hover:bg-red-500/70"
-              : "bg-white/10 text-white hover:bg-white/20"
-          }`}
-          title={isMuted ? "开启语音播报" : "静音"}
-        >
-          <i
-            className={`fas ${isMuted ? "fa-volume-mute" : "fa-volume-up"} text-sm`}
-          ></i>
-        </button>
+        {onClose && (
+          <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center bg-white/10 text-white hover:bg-white/20 transition-all" title="关闭">
+            <i className="fas fa-xmark text-sm"></i>
+          </button>
+        )}
       </div>
 
 
@@ -663,15 +730,15 @@ export default function ChatAssistant() {
           >
             {/* 消息气泡 - 最大化宽度 */}
             <div
-              className={`max-w-[100%] min-w-0 px-5 py-3.5 text-[15px] leading-relaxed shadow-sm break-words overflow-x-hidden ${
+              className={`max-w-[100%] min-w-0 px-5 py-4 text-[15px] leading-relaxed shadow-md break-words overflow-x-hidden ${
                 msg.role === "user"
-                  ? "bg-red-600 text-white rounded-2xl rounded-tr-sm"
-                  : "bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-100 dark:border-gray-700 rounded-2xl rounded-tl-sm"
+                  ? "bg-red-600 text-white rounded-2xl rounded-tr-sm shadow-md"
+                  : "bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-2xl rounded-tl-sm shadow-md"
               }`}
             >
               {msg.role === "assistant" ? (
                 <div
-                  className="whitespace-pre-wrap prose prose-sm max-w-none dark:prose-invert overflow-x-hidden [&_*]:break-words [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre]:overflow-x-auto"
+                  className="whitespace-pre-wrap prose prose-sm max-w-none dark:prose-invert overflow-x-hidden [&_*]:break-words [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre]:overflow-x-auto [&_p:last-child]:mb-0 [&_p:first-child]:mt-0"
                   dangerouslySetInnerHTML={{
                     __html: msg.htmlContent || renderMarkdownToHtml(msg.content),
                   }}
@@ -767,7 +834,7 @@ export default function ChatAssistant() {
             )}
           </button>
 
-          <div className="flex-1 relative bg-gray-50 dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 focus-within:border-red-400 focus-within:ring-2 focus-within:ring-red-100 dark:focus-within:ring-red-900/30 transition-all">
+          <div className="flex-1 relative bg-gray-50 dark:bg-gray-900 rounded-2xl border-2 border-gray-200 dark:border-gray-700 focus-within:border-red-400 focus-within:ring-2 focus-within:ring-red-100/50 dark:focus-within:ring-red-900/30 transition-all">
             <textarea
               ref={textareaRef}
               value={input}
@@ -785,7 +852,7 @@ export default function ChatAssistant() {
                     ? "正在识别语音..."
                     : "输入您的问题，或点击左侧麦克风说话..."
               }
-              className="w-full max-h-32 min-h-[44px] py-3 px-4 bg-transparent border-none focus:outline-none resize-none text-gray-800 dark:text-gray-200 text-[15px]"
+              className="w-full max-h-36 min-h-[52px] py-3.5 px-4 bg-transparent border-none focus:outline-none resize-none text-gray-800 dark:text-gray-200 text-[15px] leading-relaxed placeholder:text-gray-400 dark:placeholder:text-gray-500"
               rows={1}
               disabled={isRecording || isTranscribing}
             />

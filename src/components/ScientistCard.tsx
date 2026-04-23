@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import ScientistAvatar from './ScientistAvatar';
 
 interface Scientist {
@@ -17,16 +17,23 @@ interface ScientistCardProps {
 }
 
 export default function ScientistCard({ scientist }: ScientistCardProps) {
+  const navigate = useNavigate();
   // 提取主要领域（取前两个）作为展示，避免过长
   const mainField = scientist.field.join(' / ');
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
+      onClick={() => navigate(`/scientist/${scientist.id}`)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter') navigate(`/scientist/${scientist.id}`); }}
+      variants={{
+        initial: { opacity: 0, y: 20 },
+        visible: { opacity: 1, y: 0 },
+      }}
       whileHover={{ y: -8 }}
       transition={{ type: "spring", stiffness: 300, damping: 20 }}
-      className="group relative h-full flex flex-col bg-white dark:bg-gray-800 rounded-2xl shadow-md hover:shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-700 transition-all duration-300"
+      className="group relative h-full flex flex-col bg-white dark:bg-gray-800 rounded-2xl shadow-md hover:shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-700 transition-all duration-300 cursor-pointer"
     >
       {/* 顶部装饰背景：红色渐变 + 装饰性图案 */}
       <div className="h-28 bg-gradient-to-r from-red-600 to-red-700 dark:from-red-900 dark:to-red-800 relative overflow-hidden">
@@ -90,16 +97,13 @@ export default function ScientistCard({ scientist }: ScientistCardProps) {
 
         {/* 底部按钮区域 */}
         <div className="pt-4 mt-auto border-t border-gray-100 dark:border-gray-700 flex items-center justify-between">
-          <span className="text-xs text-gray-400 font-medium group-hover:text-red-500 transition-colors">
-            查看生平事迹
-          </span>
-          <Link
-            to={`/scientist/${scientist.id}`}
-            className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-red-50 dark:bg-red-900/40 text-red-600 dark:text-red-400 group-hover:bg-red-600 group-hover:text-white transition-all duration-300 shadow-sm"
-            aria-label={`查看 ${scientist.name} 的详情`}
-          >
+          <div className="flex items-center gap-1.5 text-red-500 dark:text-red-400">
+            <span className="text-sm">💐</span>
+            <span className="text-sm font-bold">999+</span>
+          </div>
+          <div className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-red-50 dark:bg-red-900/40 text-red-600 dark:text-red-400 group-hover:bg-red-600 group-hover:text-white transition-all duration-300 shadow-sm">
             <i className="fas fa-arrow-right text-xs transform group-hover:-rotate-45 transition-transform duration-300"></i>
-          </Link>
+          </div>
         </div>
       </div>
     </motion.div>

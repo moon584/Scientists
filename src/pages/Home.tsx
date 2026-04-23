@@ -1,11 +1,9 @@
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useNavigate } from "react-router-dom";
 import { match } from 'pinyin-pro';
 import ScientistCard from '../components/ScientistCard';
-import ChatAssistant from '../components/ChatAssistant';
 import scientistsData from '../data/scientists.json';
-import { useTheme } from '../hooks/useTheme';
 import BackToTop from '../components/BackToTop';
 
 export default function Home() {
@@ -16,8 +14,7 @@ export default function Home() {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedField, setSelectedField] = useState('all');
   const scientistsPerPage = 9; // 每页显示9个科学家
-  const { theme, toggleTheme, isDark } = useTheme();
-  
+
   // 提取所有唯一的领域
   const allFields = ['all', ...Array.from(new Set(scientists.flatMap(s => s.field)))];
 
@@ -74,32 +71,18 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-red-50 to-white dark:from-gray-900 dark:to-gray-800">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0, y: -10 }}
+      transition={{ duration: 0.25 }}
+      className="min-h-screen bg-gradient-to-b from-red-50 to-white dark:from-gray-900 dark:to-gray-800"
+    >
       <BackToTop />
   {/* 顶部横幅 */}
   <div className="relative bg-gradient-to-r from-red-700 to-red-500 text-white overflow-hidden">
     <div className="absolute inset-0 bg-[url('https://space.coze.cn/api/coze_space/gen_image?image_size=landscape_16_9&prompt=science%20laboratory%20background%20research&sign=e83c479686226f1fbcc4fbf7df5ff9c8')] bg-cover bg-center opacity-10"></div>
     <div className="container mx-auto px-4 py-16 md:py-24 relative z-10">
-      <div className="absolute top-4 right-4 flex gap-3">
-        <button
-          onClick={() => navigate('/statistics')}
-          className="p-2 bg-white/20 backdrop-blur-sm rounded-full hover:bg-white/30 transition-colors text-white"
-          title="数据图谱"
-        >
-          <i className="fas fa-chart-pie"></i>
-        </button>
-        <button
-          onClick={toggleTheme}
-          className="p-2 bg-white/20 backdrop-blur-sm rounded-full hover:bg-white/30 transition-colors"
-          aria-label={isDark ? "切换到亮色模式" : "切换到暗色模式"}
-        >
-          {isDark ? (
-            <i className="fas fa-sun text-yellow-200"></i>
-          ) : (
-            <i className="fas fa-moon text-blue-200"></i>
-          )}
-        </button>
-      </div>
       <h1 className="text-3xl md:text-5xl font-bold mb-4 text-center">科学家精神传承</h1>
       <p className="text-xl text-center max-w-2xl mx-auto text-red-100">
         探索中国杰出科学家的卓越贡献和崇高精神，传承科学报国的家国情怀
@@ -165,12 +148,6 @@ export default function Home() {
     </div>
   </div>
 
-      {/* AI 助手 */}
-      <div className="container mx-auto px-4 py-8">
-        <div className="h-[80vh] min-h-[600px]">
-          <ChatAssistant />
-        </div>
-      </div>
 
       {/* 科学家列表 */}
       <div className="container mx-auto px-4 py-12">
@@ -178,15 +155,18 @@ export default function Home() {
         
         {filteredScientists.length > 0 ? (
           <>
-            <motion.div 
+            <motion.div
               layout
+              variants={{
+                visible: { transition: { staggerChildren: 0.06 } },
+              }}
+              initial="initial"
+              animate="visible"
               className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
             >
-              <AnimatePresence>
-                {currentScientists.map((scientist) => (
-                  <ScientistCard key={scientist.id} scientist={scientist} />
-                ))}
-              </AnimatePresence>
+              {currentScientists.map((scientist) => (
+                <ScientistCard key={scientist.id} scientist={scientist} />
+              ))}
             </motion.div>
             
           {/* 分页控制 */}
@@ -275,6 +255,6 @@ export default function Home() {
           <p className="text-red-200 text-sm">弘扬科学家精神，激励更多青少年投身科学事业</p>
         </div>
       </footer>
-    </div>
+    </motion.div>
   );
 }

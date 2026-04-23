@@ -1,8 +1,10 @@
-import { Routes, Route, Link } from "react-router-dom";
+import { Routes, Route, Link, useLocation } from "react-router-dom";
 import { useState, useEffect, lazy, Suspense } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { AuthProvider, useAuth } from "@/contexts/authContext";
 import { useTheme } from './hooks/useTheme';
 import LoginModal from "@/components/LoginModal";
+import ChatWidget from "@/components/ChatWidget";
 
 const Home = lazy(() => import("@/pages/Home"));
 const ScientistDetail = lazy(() => import("@/pages/ScientistDetail"));
@@ -11,30 +13,55 @@ const AdminDashboard = lazy(() => import("@/pages/AdminDashboard"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
 const LoadingFallback = () => (
-  <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+  <motion.div
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    exit={{ opacity: 0 }}
+    className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900"
+  >
     <div className="flex flex-col items-center">
       <div className="w-12 h-12 border-4 border-red-200 border-t-red-600 rounded-full animate-spin mb-4"></div>
       <p className="text-gray-500 dark:text-gray-400 text-sm">加载中...</p>
     </div>
-  </div>
+  </motion.div>
 );
 
 /** 全局导航栏（含登录入口） */
 function GlobalNav() {
   const { isAuthenticated, user, logout } = useAuth();
+  const { toggleTheme, isDark } = useTheme();
   const [showLogin, setShowLogin] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
     <>
-      <nav className="fixed top-0 left-0 right-0 z-40 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800">
+      <nav className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2 text-red-600 dark:text-red-400 font-bold">
             <i className="fas fa-flask text-lg"></i>
             <span className="text-sm hidden sm:inline">科学家精神</span>
           </Link>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Link
+              to="/statistics"
+              className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              title="数据图谱"
+            >
+              <i className="fas fa-chart-pie"></i>
+            </Link>
+            <button
+              onClick={toggleTheme}
+              className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              aria-label={isDark ? "切换到亮色模式" : "切换到暗色模式"}
+            >
+              {isDark ? (
+                <i className="fas fa-sun text-yellow-400"></i>
+              ) : (
+                <i className="fas fa-moon text-blue-400"></i>
+              )}
+            </button>
+            <div className="w-px h-6 bg-gray-200 dark:bg-gray-700 mx-1"></div>
             {isAuthenticated && user ? (
               <div className="relative">
                 <button
@@ -89,13 +116,13 @@ function GlobalNav() {
           </div>
         </div>
       </nav>
-      <div className="h-14" /> {/* 顶部占位 */}
       <LoginModal isOpen={showLogin} onClose={() => setShowLogin(false)} />
     </>
   );
 }
 
 export default function App() {
+  const location = useLocation();
   const { theme } = useTheme();
 
   useEffect(() => {
@@ -106,15 +133,18 @@ export default function App() {
   return (
     <AuthProvider>
       <GlobalNav />
-      <Suspense fallback={<LoadingFallback />}>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/scientist/:id" element={<ScientistDetail />} />
-          <Route path="/statistics" element={<Statistics />} />
-          <Route path="/admin" element={<AdminDashboard />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </Suspense>
+      <AnimatePresence mode="wait">
+        <Suspense fallback={<LoadingFallback />}>
+          <Routes location={location} key={location.pathname}>
+            <Route path="/" element={<Home />} />
+            <Route path="/scientist/:id" element={<ScientistDetail />} />
+            <Route path="/statistics" element={<Statistics />} />
+            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
+      </AnimatePresence>
+      <ChatWidget />
     </AuthProvider>
   );
 }
