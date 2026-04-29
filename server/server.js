@@ -93,7 +93,7 @@ app.post("/api/speech-to-text", upload.single("audio"), async (req, res) => {
 // ---------- 百度 AI 聊天（带数据库持久化）----------
 app.post("/api/chat", async (req, res) => {
   try {
-    const { query, conversation_id } = req.body;
+    const { query, conversation_id, session_id: reqSessionId } = req.body;
     const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     let resolvedConversationId = conversation_id || null;
     let assistantReply = "";
@@ -108,7 +108,15 @@ app.post("/api/chat", async (req, res) => {
         const user = jwtMod.default.verify(token, JWT_SECRET);
         req.user = user; // debug
 
-        if (conversation_id) {
+        // 客户端预创建了会话，直接使用
+        if (reqSessionId) {
+          const session = get(
+            "SELECT id FROM chat_sessions WHERE id = ? AND user_id = ?",
+            [reqSessionId, user.id],
+          );
+          if (session) sessionId = session.id;
+        }
+        if (!sessionId && conversation_id) {
           // 查找已有会话
           const session = get(
             "SELECT id FROM chat_sessions WHERE baidu_conversation_id = ? AND user_id = ?",

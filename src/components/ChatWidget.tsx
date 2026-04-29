@@ -8,14 +8,32 @@ const GAP = 8;
 const EDGE_PAD = 16;
 const MIN_W = 320;
 const MIN_H = 400;
-const DEFAULT_W = 380;
-const DEFAULT_H = 600;
+const BREAKPOINT = 768;
+
+function getDefaultSize() {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  if (vw < BREAKPOINT) {
+    // 手机：全屏
+    return { width: vw, height: vh };
+  }
+  // 电脑：页面宽度的一半
+  return { width: Math.round(vw * 0.5), height: Math.round(vh * 0.7) };
+}
+
+function isMobile() {
+  return window.innerWidth < BREAKPOINT;
+}
 
 function getDialogStyle(
   mascotPos: { x: number; y: number },
   w: number,
   h: number
 ) {
+  if (isMobile()) {
+    return { left: 0, top: 0 };
+  }
+
   const vw = window.innerWidth;
   const vh = window.innerHeight;
 
@@ -44,14 +62,14 @@ function getDialogStyle(
 function loadSize() {
   try {
     const saved = localStorage.getItem("dialog_size");
-    if (!saved) return { width: DEFAULT_W, height: DEFAULT_H };
+    if (!saved) return getDefaultSize();
     const p = JSON.parse(saved);
     if (typeof p.width === "number" && typeof p.height === "number") {
       return p;
     }
-    return { width: DEFAULT_W, height: DEFAULT_H };
+    return getDefaultSize();
   } catch {
-    return { width: DEFAULT_W, height: DEFAULT_H };
+    return getDefaultSize();
   }
 }
 

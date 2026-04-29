@@ -112,7 +112,7 @@ interface ChatAssistantProps {
 }
 
 export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
-  const { token, isAuthenticated } = useAuth();
+  const { token, isAuthenticated, user } = useAuth();
 
   // 从 localStorage 恢复上次的对话（先于网络请求，实现无缝跳转）
   const [initialState] = useState(() => {
@@ -129,7 +129,11 @@ export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
   const [input, setInput] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
+  const loadingCountRef = useRef(0);
+  const safeSetLoading = useRef((delta: number) => {
+    loadingCountRef.current += delta;
+    setIsLoading(loadingCountRef.current > 0);
+  }).current;  const [isTranscribing, setIsTranscribing] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(
     initialState?.conversationId ?? null
   );
@@ -143,10 +147,15 @@ export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
 
   const recorderRef = useRef<RecordRTC | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const activeSessionRef = useRef<number | null>(null); // 当前活跃流式请求的会话 ID
+  const sessionCacheRef = useRef<Record<number, { messages: Message[]; conversationId: string | null }>>({});
 
   const [isMuted, setIsMuted] = useState(false);
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [newChatDialogOpen, setNewChatDialogOpen] = useState(false);
+  const [newChatTitle, setNewChatTitle] = useState('');
+  const [pendingSessionName, setPendingSessionName] = useState<string | null>(null);
 
   // 自动保存对话到 localStorage（跳转页面后恢复）
   useEffect(() => {
@@ -155,7 +164,32 @@ export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
     }
   }, [messages, conversationId, currentSessionId]);
 
-  // 登录后加载会话列表（侧栏默认收起）
+  // 进入会话时滚动到底部（不随流式更新滚动）
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [currentSessionId]);
+
+  // 新建会话时，如果用户指定了名称，在服务端创建会话后自动重命名
+  useEffect(() => {
+    if (!currentSessionId || !pendingSessionName || !token) return;
+    const name = pendingSessionName;
+    setPendingSessionName(null);
+    fetch(`${API_BASE_URL}/api/chat/sessions/${currentSessionId}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: name }),
+    })
+      .then(res => {
+        if (res.ok) {
+          setSessions(prev => prev.map(s =>
+            s.id === currentSessionId ? { ...s, title: name } : s
+          ));
+        }
+      })
+      .catch(() => {});
+  }, [currentSessionId]);
+
+  // 登录后加载会话列表，默认进入最近一个对话
   useEffect(() => {
     if (isAuthenticated && token) {
       fetch(`${API_BASE_URL}/api/chat/sessions`, {
@@ -165,11 +199,13 @@ export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
         .then((data) => {
           const list = data.sessions || [];
           setSessions(list);
-          // 尝试从缓存恢复上次的会话 ID
           const savedId = sessionStorage.getItem('chat_session_id');
           if (savedId && list.some((s: ChatSession) => s.id === Number(savedId))) {
             loadSessionMessages(Number(savedId));
             sessionStorage.removeItem('chat_session_id');
+          } else if (list.length > 0 && !currentSessionId) {
+            // 默认进入最近一个对话
+            loadSessionMessages(list[0].id);
           }
         })
         .catch(console.error);
@@ -180,9 +216,22 @@ export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
     }
   }, [isAuthenticated, token]);
 
-  // 加载指定会话的消息
+  // 加载指定会话的消息（优先从会话缓存读取）
   const loadSessionMessages = async (sessionId: number) => {
     if (!token) return;
+
+    // 记录当前缓存消息数（用于后续与 DB 对比）
+    const cachedMsgCount = sessionCacheRef.current[sessionId]?.messages?.length || 0;
+
+    // 先检查会话缓存，立即显示
+    const cached = sessionCacheRef.current[sessionId];
+    if (cached && cached.messages.length > 0) {
+      setMessages([...cached.messages]);
+      setCurrentSessionId(sessionId);
+      if (cached.conversationId) setConversationId(cached.conversationId);
+      clearCache();
+    }
+
     try {
       const res = await fetch(`${API_BASE_URL}/api/chat/sessions/${sessionId}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -195,24 +244,47 @@ export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
         content: m.content,
         htmlContent: m.role === "assistant" ? renderMarkdownToHtml(m.content) : undefined,
       }));
-      setMessages(loadedMessages.length > 0 ? loadedMessages : [WELCOME_MESSAGE]);
-      setCurrentSessionId(sessionId);
-      setConversationId(data.session?.baidu_conversation_id || null);
-      clearCache(); // 切到旧会话时清掉缓存，新消息会重新缓存
+      // 和缓存对比：取更完整的那份（缓存可能包含流式中内容，DB 可能已有完整记录）
+      const useDb = loadedMessages.length > cachedMsgCount || cachedMsgCount === 0;
+      if (useDb) {
+        setMessages(loadedMessages.length > 0 ? loadedMessages : [WELCOME_MESSAGE]);
+        setCurrentSessionId(sessionId);
+        setConversationId(data.session?.baidu_conversation_id || null);
+        // 更新缓存为 DB 数据
+        sessionCacheRef.current[sessionId] = {
+          messages: loadedMessages.length > 0 ? loadedMessages : [],
+          conversationId: data.session?.baidu_conversation_id || null,
+        };
+      }
+      clearCache();
     } catch (err) {
       console.error("加载会话失败:", err);
     }
   };
 
-  const startNewChat = async () => {
+  /** 生成默认会话标题：昵称+编码 */
+  const defaultSessionTitle = () => {
+    const name = user?.display_name || user?.username || '用户';
+    const code = Date.now().toString(36).slice(-4).toUpperCase();
+    return `${name}-${code}`;
+  };
+
+  const startNewChat = async (name?: string) => {
+    activeSessionRef.current = -1; // 使旧流式失效
+    // 保存当前会话到缓存
+    if (currentSessionId && messages.length > 1) {
+      sessionCacheRef.current[currentSessionId] = {
+        messages: [...messages],
+        conversationId: conversationId,
+      };
+    }
     // 保存当前对话到历史记录
     if (token && currentSessionId) {
-      const title = `对话记录${sessions.length + 1}`;
       try {
         await fetch(`${API_BASE_URL}/api/chat/sessions/${currentSessionId}`, {
           method: 'PUT',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title }),
+          body: JSON.stringify({ title: defaultSessionTitle() }),
         });
         // 刷新会话列表
         const res = await fetch(`${API_BASE_URL}/api/chat/sessions`, {
@@ -228,6 +300,16 @@ export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
     setCurrentSessionId(null);
     clearCache();
     sessionStorage.removeItem('chat_session_id');
+
+    if (name) setPendingSessionName(name);
+  };
+
+  const confirmNewChat = () => {
+    activeSessionRef.current = -1; // 使旧流式失效
+    const name = newChatTitle.trim();
+    setNewChatDialogOpen(false);
+    setNewChatTitle('');
+    startNewChat(name || undefined);
   };
 
   // 自动调整输入框高度
@@ -313,6 +395,15 @@ export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
     };
   }, []);
 
+  // 页面关闭/刷新前自动保存当前对话
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      saveCache(messages, conversationId, currentSessionId);
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [messages, conversationId, currentSessionId]);
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -394,7 +485,36 @@ export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
     };
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
-    setIsLoading(true);
+    safeSetLoading(1);
+
+    // 预先创建会话（新对话），获得稳定的会话 ID
+    let sessionForThisRequest: number | null = currentSessionId;
+    if (!sessionForThisRequest && token) {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/chat/sessions`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: defaultSessionTitle(), baidu_conversation_id: '' }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          sessionForThisRequest = data.session.id;
+          setCurrentSessionId(sessionForThisRequest);
+        }
+      } catch { /* ignore */ }
+    }
+
+    activeSessionRef.current = sessionForThisRequest;
+    const isActive = () => activeSessionRef.current === sessionForThisRequest;
+
+    // 初始化会话缓存
+    if (sessionForThisRequest && !sessionCacheRef.current[sessionForThisRequest]) {
+      sessionCacheRef.current[sessionForThisRequest] = { messages: [], conversationId: null };
+    }
+    // 将用户消息写入缓存
+    if (sessionForThisRequest) {
+      sessionCacheRef.current[sessionForThisRequest].messages.push(userMessage);
+    }
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/chat`, {
@@ -406,6 +526,7 @@ export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
         body: JSON.stringify({
           query: userMessage.content,
           conversation_id: conversationId,
+          session_id: sessionForThisRequest,
         }),
       });
 
@@ -434,15 +555,36 @@ export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
           assistantMessageId = (Date.now() + 1).toString();
           assistantContent = text;
           const htmlContent = renderMarkdownToHtml(text);
-          setMessages((prev) => [...prev, { id: assistantMessageId!, role: "assistant", content: text, htmlContent }]);
+          const newMsg: Message = { id: assistantMessageId!, role: "assistant", content: text, htmlContent };
+          if (isActive()) {
+            setMessages((prev) => [...prev, newMsg]);
+          }
+          // 写入会话缓存（切换后回来也能看到）
+          if (sessionForThisRequest) {
+            const cached = sessionCacheRef.current[sessionForThisRequest];
+            if (cached) cached.messages.push(newMsg);
+          }
         } else {
           assistantContent += text;
           const htmlContent = renderMarkdownToHtml(assistantContent);
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === assistantMessageId ? { ...msg, content: assistantContent, htmlContent } : msg,
-            ),
-          );
+          if (isActive()) {
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantMessageId ? { ...msg, content: assistantContent, htmlContent } : msg,
+              ),
+            );
+          }
+          // 更新会话缓存
+          if (sessionForThisRequest) {
+            const cached = sessionCacheRef.current[sessionForThisRequest];
+            if (cached) {
+              const last = cached.messages[cached.messages.length - 1];
+              if (last && last.role === "assistant" && (last.id === assistantMessageId || cached.messages.length === 1)) {
+                last.content = assistantContent;
+                last.htmlContent = htmlContent;
+              }
+            }
+          }
         }
       };
 
@@ -457,13 +599,22 @@ export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
         }
 
         if (type === "meta") {
-          if (payload.conversation_id) setConversationId(payload.conversation_id);
-          if (payload.session_id) setCurrentSessionId(payload.session_id);
+          if (isActive()) {
+            if (payload.conversation_id) setConversationId(payload.conversation_id);
+            if (payload.session_id) setCurrentSessionId(payload.session_id);
+          }
+          // 始终写入会话缓存
+          if (sessionForThisRequest && payload.conversation_id) {
+            const cached = sessionCacheRef.current[sessionForThisRequest];
+            if (cached) cached.conversationId = payload.conversation_id;
+          }
           return;
         }
 
         if (type === "chunk" && payload.text) {
-          appendAssistantText(payload.text);
+          if (isActive()) {
+            appendAssistantText(payload.text);
+          }
           return;
         }
 
@@ -517,7 +668,19 @@ export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
       }
       flushSSELine("");
 
-      if (streamError) {
+      if (!isActive()) {
+        // 会话已切换，将累积的回答写入缓存供切回时显示
+        if (sessionForThisRequest && assistantContent) {
+          const cached = sessionCacheRef.current[sessionForThisRequest];
+          if (cached) {
+            const last = cached.messages[cached.messages.length - 1];
+            if (last && last.role === "assistant") {
+              last.content = assistantContent.trimEnd();
+              last.htmlContent = renderMarkdownToHtml(assistantContent.trimEnd());
+            }
+          }
+        }
+      } else if (streamError) {
         setMessages((prev) => [
           ...prev,
           {
@@ -550,16 +713,18 @@ export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
       }
     } catch (error) {
       console.error("Chat error:", error);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `${Date.now()}-error`,
-          role: "assistant",
-          content: "网络请求失败，请检查后端服务是否启动。",
-        },
-      ]);
+      if (isActive()) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `${Date.now()}-error`,
+            role: "assistant",
+            content: "网络请求失败，请检查后端服务是否启动。",
+          },
+        ]);
+      }
     } finally {
-      setIsLoading(false);
+      safeSetLoading(-1);
     }
   };
 
@@ -615,7 +780,7 @@ export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
             <div className="flex items-center justify-between p-3 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300">历史记录</span>
               <div className="flex items-center gap-1">
-                <button onClick={startNewChat} className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500" title="新对话">
+                <button onClick={() => setNewChatDialogOpen(true)} className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500" title="新对话">
                   <i className="fas fa-plus text-xs"></i>
                 </button>
                 <button onClick={() => setSidebarOpen(false)} className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500" title="收起侧栏">
@@ -634,6 +799,13 @@ export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
                     key={s.id}
                     className={`flex items-center gap-1 px-3 py-2.5 text-sm border-b border-gray-50 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer group ${currentSessionId === s.id ? 'bg-red-50 dark:bg-red-900/10 border-l-2 border-l-red-500' : ''}`}
                     onClick={() => {
+                      // 切换前保存当前会话到缓存
+                      if (currentSessionId && currentSessionId !== s.id) {
+                        sessionCacheRef.current[currentSessionId] = {
+                          messages: [...messages],
+                          conversationId: conversationId,
+                        };
+                      }
                       loadSessionMessages(s.id);
                       if (window.innerWidth < 640) setSidebarOpen(false);
                     }}
@@ -884,6 +1056,29 @@ export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
         </div>
       </div>
       </div>
+
+      {/* 新建会话命名对话框 */}
+      {newChatDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setNewChatDialogOpen(false)}>
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-6 w-80 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">新建对话</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">为对话设置一个名称（留空将使用默认名称）</p>
+            <input
+              autoFocus
+              type="text"
+              value={newChatTitle}
+              onChange={(e) => setNewChatTitle(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') confirmNewChat(); }}
+              placeholder="输入对话名称..."
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm mb-4 focus:ring-2 focus:ring-red-500 outline-none"
+            />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => { setNewChatDialogOpen(false); setNewChatTitle(''); }} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">取消</button>
+              <button onClick={confirmNewChat} className="px-4 py-2 text-sm text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors">开始对话</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
