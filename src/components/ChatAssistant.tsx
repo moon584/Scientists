@@ -20,6 +20,7 @@ interface Message {
 interface StreamEventPayload {
   text?: string;
   conversation_id?: string;
+  session_id?: number;
   error?: string;
 }
 
@@ -154,10 +155,9 @@ export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
     }
   }, [messages, conversationId, currentSessionId]);
 
-  // 登录后自动展开侧栏并加载会话列表
+  // 登录后加载会话列表（侧栏默认收起）
   useEffect(() => {
     if (isAuthenticated && token) {
-      setSidebarOpen(true);
       fetch(`${API_BASE_URL}/api/chat/sessions`, {
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -426,6 +426,7 @@ export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
       let eventDataLines: string[] = [];
       let assistantContent = "";
       let streamEnded = false;
+      let streamError: string | null = null;
 
       const appendAssistantText = (text: string) => {
         if (!text) return;
@@ -467,7 +468,9 @@ export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
         }
 
         if (type === "error") {
-          throw new Error(payload.error || "流式响应失败");
+          streamError = payload.error || "流式响应失败";
+          streamEnded = true;
+          return;
         }
 
         if (type === "done") {
@@ -514,25 +517,36 @@ export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
       }
       flushSSELine("");
 
-      if (!assistantContent && streamEnded) {
-        assistantContent = "抱歉，我暂时无法回答这个问题。";
-      }
-
-      if (assistantContent) {
-        const htmlContent = renderMarkdownToHtml(assistantContent);
-        if (assistantMessageId) {
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === assistantMessageId
-                ? { ...msg, content: assistantContent.trimEnd(), htmlContent }
-                : msg,
-            ),
-          );
-        } else {
-          const fallbackId = (Date.now() + 1).toString();
-          setMessages((prev) => [...prev, { id: fallbackId, role: "assistant", content: assistantContent.trimEnd(), htmlContent }]);
+      if (streamError) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `${Date.now()}-error`,
+            role: "assistant",
+            content: `抱歉，AI 服务返回了错误：${streamError}`,
+          },
+        ]);
+      } else {
+        if (!assistantContent && streamEnded) {
+          assistantContent = "抱歉，我暂时无法回答这个问题。";
         }
-        speak(assistantContent);
+
+        if (assistantContent) {
+          const htmlContent = renderMarkdownToHtml(assistantContent);
+          if (assistantMessageId) {
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantMessageId
+                  ? { ...msg, content: assistantContent.trimEnd(), htmlContent }
+                  : msg,
+              ),
+            );
+          } else {
+            const fallbackId = (Date.now() + 1).toString();
+            setMessages((prev) => [...prev, { id: fallbackId, role: "assistant", content: assistantContent.trimEnd(), htmlContent }]);
+          }
+          speak(assistantContent);
+        }
       }
     } catch (error) {
       console.error("Chat error:", error);

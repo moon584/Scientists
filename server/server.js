@@ -11,7 +11,7 @@ import { dirname } from "path";
 
 import { getDb, run, get, all, getValue } from "./db.js";
 import { initDatabase } from "./initDb.js";
-import { generateToken, authenticate, requireAdmin } from "./auth.js";
+import { generateToken, authenticate, requireAdmin, JWT_SECRET } from "./auth.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -35,6 +35,11 @@ app.use(
   }),
 );
 app.use(express.json());
+
+// 头像上传目录
+const AVATAR_DIR = path.resolve(__dirname, "public/avatars");
+if (!fs.existsSync(AVATAR_DIR)) fs.mkdirSync(AVATAR_DIR, { recursive: true });
+app.use("/avatars", express.static(AVATAR_DIR));
 
 const upload = multer({ dest: "uploads/" });
 
@@ -97,14 +102,11 @@ app.post("/api/chat", async (req, res) => {
     let sessionId = null;
     if (req.headers.authorization) {
       try {
-        const { authenticate } = await import("./auth.js");
         const header = req.headers.authorization;
         const token = header.split(" ")[1];
-        const user = (await import("jsonwebtoken")).default.verify(
-          token,
-          process.env.JWT_SECRET || "scientist-website-jwt-secret",
-        );
-        req.user = user;
+        const jwtMod = await import("jsonwebtoken");
+        const user = jwtMod.default.verify(token, JWT_SECRET);
+        req.user = user; // debug
 
         if (conversation_id) {
           // 查找已有会话
@@ -122,8 +124,8 @@ app.post("/api/chat", async (req, res) => {
           );
           sessionId = result.lastInsertRowid;
         }
-      } catch {
-        /* 未登录用户继续匿名模式 */
+      } catch (e) {
+        console.error("[chat] session create error:", e);
       }
     }
 
@@ -252,6 +254,9 @@ app.post("/api/chat", async (req, res) => {
           console.error(`Baidu API error: [${data.code}] ${data.message}`);
           if (!assistantReply) {
             writeEvent("error", { error: `百度 API 错误: ${data.message}` });
+            writeEvent("done", { done: true });
+            reader.cancel().catch(() => {});
+            return res.end();
           }
         }
       }
@@ -436,14 +441,84 @@ app.get("/api/auth/me", authenticate, (req, res) => {
   res.json({ user, preferences: prefs || {} });
 });
 
-// 更新个人资料
+// 更新个人资料（昵称、邮箱、头像 URL）
 app.put("/api/auth/profile", authenticate, (req, res) => {
-  const { display_name, email } = req.body;
+  const { display_name, email, avatar } = req.body;
+  const updates = [];
+  const params = [];
+
+  if (display_name !== undefined) {
+    updates.push("display_name = ?");
+    params.push(display_name);
+  }
+  if (email !== undefined) {
+    updates.push("email = ?");
+    params.push(email);
+  }
+  if (avatar !== undefined) {
+    updates.push("avatar = ?");
+    params.push(avatar);
+  }
+
+  if (updates.length === 0) {
+    return res.status(400).json({ error: "没有要更新的字段" });
+  }
+
+  updates.push("updated_at = datetime('now', 'localtime')");
+  params.push(req.user.id);
+
   run(
-    "UPDATE users SET display_name = ?, email = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
-    [display_name || "", email || "", req.user.id],
+    `UPDATE users SET ${updates.join(", ")} WHERE id = ?`,
+    params,
   );
-  res.json({ message: "更新成功" });
+
+  const user = get(
+    "SELECT id, username, display_name, email, avatar, role, created_at FROM users WHERE id = ?",
+    [req.user.id],
+  );
+  res.json({ message: "更新成功", user });
+});
+
+// 上传头像文件
+const avatarUpload = multer({
+  dest: AVATAR_DIR,
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("仅支持 JPG/PNG/GIF/WebP 格式"));
+    }
+  },
+});
+
+app.post("/api/auth/avatar", authenticate, avatarUpload.single("avatar"), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "请选择头像文件" });
+
+  const ext = path.extname(req.file.originalname) || ".jpg";
+  const filename = `user_${req.user.id}${ext}`;
+  const destPath = path.join(AVATAR_DIR, filename);
+
+  // 删除旧头像文件（保留 default-avatar.png）
+  try {
+    const oldUser = get("SELECT avatar FROM users WHERE id = ?", [req.user.id]);
+    if (oldUser && oldUser.avatar && oldUser.avatar !== "/default-avatar.png") {
+      const oldPath = path.join(AVATAR_DIR, path.basename(oldUser.avatar));
+      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+    }
+  } catch { /* ignore */ }
+
+  // 重命名上传文件
+  fs.renameSync(req.file.path, destPath);
+
+  const avatarUrl = `/avatars/${filename}`;
+  run("UPDATE users SET avatar = ?, updated_at = datetime('now', 'localtime') WHERE id = ?", [
+    avatarUrl,
+    req.user.id,
+  ]);
+
+  res.json({ avatar: avatarUrl });
 });
 
 // ============================================================

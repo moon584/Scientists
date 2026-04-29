@@ -1,7 +1,7 @@
 import { Routes, Route, Link, useLocation } from "react-router-dom";
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { AuthProvider, useAuth } from "@/contexts/authContext";
+import { AuthProvider, useAuth, type User } from "@/contexts/authContext";
 import { useTheme } from './hooks/useTheme';
 import LoginModal from "@/components/LoginModal";
 import ChatWidget from "@/components/ChatWidget";
@@ -10,6 +10,7 @@ const Home = lazy(() => import("@/pages/Home"));
 const ScientistDetail = lazy(() => import("@/pages/ScientistDetail"));
 const Statistics = lazy(() => import("@/pages/Statistics"));
 const AdminDashboard = lazy(() => import("@/pages/AdminDashboard"));
+const Profile = lazy(() => import("@/pages/Profile"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
 const LoadingFallback = () => (
@@ -26,18 +27,86 @@ const LoadingFallback = () => (
   </motion.div>
 );
 
+/** 用户下拉菜单 */
+function UserMenu({ user, onLogout }: { user: User; onLogout: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // 点击外部关闭下拉
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+      >
+        <div className="w-7 h-7 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-xs font-bold text-red-600 dark:text-red-400">
+          {user.display_name?.charAt(0) || user.username.charAt(0)}
+        </div>
+        <span className="text-sm text-gray-700 dark:text-gray-300 hidden sm:inline max-w-[100px] truncate">
+          {user.display_name || user.username}
+        </span>
+        <i className={`fas fa-chevron-down text-xs text-gray-400 transition-transform ${open ? "rotate-180" : ""}`}></i>
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 py-1 z-50">
+          <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-700">
+            <p className="text-xs text-gray-500">{user.username}</p>
+            <p className="text-xs text-gray-400">{user.role === "admin" ? "管理员" : "用户"}</p>
+          </div>
+          <Link
+            to="/profile"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+          >
+            <i className="fas fa-user w-4 text-gray-400"></i>
+            个人主页
+          </Link>
+          {user.role === "admin" && (
+            <Link
+              to="/admin"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+            >
+              <i className="fas fa-gauge w-4 text-gray-400"></i>
+              管理后台
+            </Link>
+          )}
+          <button
+            onClick={() => { onLogout(); setOpen(false); }}
+            className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-gray-700"
+          >
+            <i className="fas fa-sign-out-alt w-4"></i>
+            退出登录
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** 全局导航栏（含登录入口） */
 function GlobalNav() {
   const { isAuthenticated, user, logout } = useAuth();
   const { toggleTheme, isDark } = useTheme();
   const [showLogin, setShowLogin] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
     <>
-      <nav className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800">
+      <nav className="sticky top-0 z-40 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2 text-red-600 dark:text-red-400 font-bold">
+          <Link to="/" className="flex items-center gap-2 text-red-600 dark:text-red-400 font-bold shrink-0">
             <i className="fas fa-flask text-lg"></i>
             <span className="text-sm hidden sm:inline">科学家精神</span>
           </Link>
@@ -61,49 +130,18 @@ function GlobalNav() {
                 <i className="fas fa-moon text-blue-400"></i>
               )}
             </button>
+            {user?.role === "admin" && (
+              <Link
+                to="/admin"
+                className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                title="管理后台"
+              >
+                <i className="fas fa-gauge"></i>
+              </Link>
+            )}
             <div className="w-px h-6 bg-gray-200 dark:bg-gray-700 mx-1"></div>
             {isAuthenticated && user ? (
-              <div className="relative">
-                <button
-                  onClick={() => setMenuOpen(!menuOpen)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                >
-                  <div className="w-7 h-7 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-xs font-bold text-red-600 dark:text-red-400">
-                    {user.display_name?.charAt(0) || user.username.charAt(0)}
-                  </div>
-                  <span className="text-sm text-gray-700 dark:text-gray-300 hidden sm:inline max-w-[100px] truncate">
-                    {user.display_name || user.username}
-                  </span>
-                  <i className="fas fa-chevron-down text-xs text-gray-400"></i>
-                </button>
-                {menuOpen && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-                    <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 py-1 z-20">
-                      <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-700">
-                        <p className="text-xs text-gray-500">{user.username}</p>
-                        <p className="text-xs text-gray-400">{user.role === 'admin' ? '管理员' : '用户'}</p>
-                      </div>
-                      {user.role === 'admin' && (
-                        <Link
-                          to="/admin"
-                          className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
-                        >
-                          <i className="fas fa-gauge w-4 text-gray-400"></i>
-                          管理后台
-                        </Link>
-                      )}
-                      <button
-                        onClick={logout}
-                        className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-50 dark:hover:bg-gray-700"
-                      >
-                        <i className="fas fa-sign-out-alt w-4"></i>
-                        退出登录
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
+              <UserMenu user={user} onLogout={logout} />
             ) : (
               <button
                 onClick={() => setShowLogin(true)}
@@ -140,6 +178,7 @@ export default function App() {
             <Route path="/scientist/:id" element={<ScientistDetail />} />
             <Route path="/statistics" element={<Statistics />} />
             <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/profile" element={<Profile />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>

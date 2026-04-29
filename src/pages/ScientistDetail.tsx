@@ -1,13 +1,10 @@
 import { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { useParams, useNavigate } from "react-router-dom";
 import confetti from "canvas-confetti";
 import scientistsData from "../data/scientists.json";
-import { useAuth } from "@/contexts/authContext";
 import ScientistAvatar from "../components/ScientistAvatar";
 import BackToTop from "../components/BackToTop";
-
-const API_BASE = import.meta.env.VITE_API_URL || "";
 
 interface Scientist {
   id: string;
@@ -26,7 +23,6 @@ export default function ScientistDetail() {
   }>();
 
   const navigate = useNavigate();
-  const { token, isAuthenticated } = useAuth();
   const [scientist, setScientist] = useState<Scientist | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [prevId, setPrevId] = useState<string | null>(null);
@@ -52,7 +48,7 @@ export default function ScientistDetail() {
       }
       setIsLoading(false);
     });
-  }, [id, token]);
+  }, [id]);
 
   const handleTribute = async () => {
     confetti({

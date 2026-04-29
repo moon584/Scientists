@@ -52,12 +52,20 @@ export default function AdminDashboard() {
                 欢迎回来，{user.display_name || user.username}
               </p>
             </div>
-            <button
-              onClick={logout}
-              className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-            >
-              <i className="fas fa-sign-out-alt mr-1"></i>退出
-            </button>
+            <div className="flex items-center gap-3">
+              <a
+                href="/"
+                className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+              >
+                <i className="fas fa-home mr-1"></i>返回首页
+              </a>
+              <button
+                onClick={logout}
+                className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+              >
+                <i className="fas fa-sign-out-alt mr-1"></i>退出
+              </button>
+            </div>
           </div>
         </div>
       </div>
