@@ -27,9 +27,23 @@ const CHAT_LOG_FILE = path.join(LOG_DIR, "chat.log");
 if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
 
 // ---------- 中间件 ----------
+const ALLOWED_ORIGINS = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "https://host.hubu.net.cn",
+  "https://host.hubu.net.cn:8843",
+  "http://host.hubu.net.cn:8800",
+];
 app.use(
   cors({
-    origin: ["http://localhost:3000", "http://127.0.0.1:3000"],
+    origin: (origin, callback) => {
+      // 同源请求或无 origin（Postman/curl）允许通过
+      if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   }),
@@ -768,6 +782,22 @@ app.get("/api/admin/chat-logs", authenticate, requireAdmin, (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ============================================================
+//  生产环境：托管前端静态文件
+// ============================================================
+
+const FRONTEND_DIST = path.resolve(__dirname, "../dist/static");
+if (fs.existsSync(FRONTEND_DIST)) {
+  app.use(express.static(FRONTEND_DIST));
+  // SPA 路由支持：非 API 请求返回 index.html（前端路由）
+  app.get(/^(?!\/api).*/, (_req, res) => {
+    res.sendFile(path.join(FRONTEND_DIST, "index.html"));
+  });
+  console.log(`[deploy] Serving static files from ${FRONTEND_DIST}`);
+} else {
+  console.log("[deploy] Frontend dist not found, API only");
+}
 
 // ============================================================
 //  启动服务器
