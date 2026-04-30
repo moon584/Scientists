@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   PieChart, Pie, Cell, 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, 
-  ResponsiveContainer 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer
 } from 'recharts';
 import { motion } from 'framer-motion';
 import scientistsData from '../data/scientists.json';
@@ -40,10 +40,7 @@ export default function Statistics() {
         
         // 简单截取前两个字归类（大致准确）
         const shortName = province.substring(0, 2);
-        // 修正一些可能的名字
-        const finalName = shortName; 
-        
-        provinceCount[finalName] = (provinceCount[finalName] || 0) + 1;
+        provinceCount[shortName] = (provinceCount[shortName] || 0) + 1;
       }
     });
     const provinceData = Object.entries(provinceCount)
@@ -110,7 +107,7 @@ export default function Statistics() {
                     contentStyle={{ backgroundColor: isDark ? '#1f2937' : '#fff', borderColor: isDark ? '#374151' : '#e5e7eb', color: isDark ? '#fff' : '#000' }}
                 />
                 <Bar dataKey="value" fill="#ef4444" radius={[0, 4, 4, 0]}>
-                    {stats.fieldData.slice(0, 10).map((entry, index) => (
+                    {stats.fieldData.slice(0, 10).map((_entry, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                 </Bar>
@@ -132,7 +129,7 @@ export default function Statistics() {
                   fill="#8884d8"
                   dataKey="value"
                 >
-                  {stats.provinceData.map((entry, index) => (
+                  {stats.provinceData.map((_entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>

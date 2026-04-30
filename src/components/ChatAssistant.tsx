@@ -130,10 +130,11 @@ export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const loadingCountRef = useRef(0);
-  const safeSetLoading = useRef((delta: number) => {
+  const safeSetLoading = (delta: number) => {
     loadingCountRef.current += delta;
     setIsLoading(loadingCountRef.current > 0);
-  }).current;  const [isTranscribing, setIsTranscribing] = useState(false);
+  };
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(
     initialState?.conversationId ?? null
   );
@@ -329,50 +330,19 @@ export default function ChatAssistant({ onClose }: ChatAssistantProps = {}) {
     utterance.lang = "zh-CN";
 
     const voices = window.speechSynthesis.getVoices();
+    const isMale = (v: SpeechSynthesisVoice) =>
+      v.name.includes("Yunxi") || v.name.includes("Yunjian") ||
+      v.name.includes("Yunze") || v.name.toLowerCase().includes("male") ||
+      v.name.includes("男");
 
-    let targetVoice = voices.find(
-      (voice) =>
-        voice.lang.includes("zh") &&
-        (voice.name.includes("Yunxi") ||
-          voice.name.includes("Yunjian") ||
-          voice.name.includes("Yunze") ||
-          voice.name.includes("Kangkang") ||
-          voice.name.toLowerCase().includes("male") ||
-          voice.name.includes("男")),
-    );
+    // 首选男声，备选任意中文声
+    const target = voices.find(v => v.lang.includes("zh") && isMale(v))
+      ?? voices.find(v => v.lang.includes("zh"));
 
-    if (!targetVoice) {
-      targetVoice = voices.find(
-        (voice) =>
-          voice.lang.includes("zh") &&
-          !voice.name.includes("Huihui") &&
-          !voice.name.includes("Yaoyao") &&
-          !voice.name.includes("Xiaoxiao") &&
-          !voice.name.includes("Tingting") &&
-          !voice.name.toLowerCase().includes("female") &&
-          !voice.name.includes("女"),
-      );
-    }
-
-    if (!targetVoice) {
-      targetVoice = voices.find((voice) => voice.lang.includes("zh"));
-    }
-
-    if (targetVoice) {
-      utterance.voice = targetVoice;
-    }
-
-    if (
-      targetVoice &&
-      (targetVoice.name.includes("Yunxi") ||
-        targetVoice.name.includes("Yunjian") ||
-        targetVoice.name.includes("Yunze"))
-    ) {
-      utterance.pitch = 1.0;
-      utterance.rate = 1.0;
-    } else {
-      utterance.pitch = 0.8;
-      utterance.rate = 0.95;
+    if (target) {
+      utterance.voice = target;
+      utterance.rate = target.name.includes("Yun") ? 1.0 : 0.95;
+      utterance.pitch = target.name.includes("Yun") ? 1.0 : 0.8;
     }
 
     window.speechSynthesis.speak(utterance);

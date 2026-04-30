@@ -4,6 +4,7 @@ import ChatAssistant from "./ChatAssistant";
 import DraggableMascot from "./DraggableMascot";
 
 const MASCOT_SIZE = 60;
+const MASCOT_SIZE_PX = 56;
 const GAP = 8;
 const EDGE_PAD = 16;
 const MIN_W = 320;
@@ -88,6 +89,17 @@ export default function ChatWidget() {
   const dialogStyle = isOpen
     ? getDialogStyle(mascotPos, dialogSize.width, dialogSize.height)
     : { left: 0, top: 0 };
+
+  // 检测悬浮球与对话框是否重叠
+  const isOverlapping = isOpen && (() => {
+    const mx = mascotPos.x;
+    const my = mascotPos.y;
+    const dl = dialogStyle.left;
+    const dt = dialogStyle.top;
+    const dr = dl + dialogSize.width;
+    const db = dt + dialogSize.height;
+    return mx < dr && (mx + MASCOT_SIZE_PX) > dl && my < db && (my + MASCOT_SIZE_PX) > dt;
+  })();
 
   // --- 缩放逻辑 ---
   const resizeRef = useRef<{
@@ -186,6 +198,7 @@ export default function ChatWidget() {
         isOpen={isOpen}
         onClick={() => setIsOpen((prev) => !prev)}
         onPositionChange={handlePositionChange}
+        hidden={isOverlapping}
       />
     </>
   );

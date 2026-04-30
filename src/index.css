@@ -14,24 +14,15 @@
   
   /* 中国红配色系统 */
   --color-primary: #C41E3A; /* 中国红主色 */
-  --color-primary-light: #E83F5B; /* 浅红色 */
   --color-primary-dark: #9A1E36; /* 深红色 */
-  --color-accent: #FFD700; /* 金色点缀 */
-  --color-text-primary: #333333;
-  --color-text-secondary: #666666;
-  --color-background: #FFFFFF;
   --color-background-light: #F9F9F9;
 }
 
 /* 暗色模式配色 */
 .dark {
-  --color-primary: #E83F5B; /* 中国红主色 (暗色模式下稍亮) */
-  --color-primary-light: #FF6B81; /* 浅红色 */
-  --color-primary-dark: #C41E3A; /* 深红色 */
-  --color-accent: #FFD700; /* 金色点缀 */
-  --color-text-primary: #FFFFFF;
-  --color-text-secondary: #B0BEC5;
-  --color-background: #121212;
+  /* 中国红配色系统 (暗色模式下稍亮) */
+  --color-primary: #E83F5B;
+  --color-primary-dark: #C41E3A;
   --color-background-light: #1E1E1E;
 }
 
@@ -64,23 +55,6 @@ body,html{
 ::-webkit-scrollbar-thumb:hover {
   background-color: var(--color-primary-dark);
 }
-
-/* 过渡动画优化 */
-.fade-in {
-  animation: fadeIn 0.5s ease-in-out;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 /* 骨架屏脉冲动画 */
 .animate-pulse {
   animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;

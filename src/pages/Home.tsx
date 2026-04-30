@@ -8,7 +8,7 @@ import BackToTop from '../components/BackToTop';
 
 export default function Home() {
   const navigate = useNavigate();
-  const [scientists, setScientists] = useState(scientistsData);
+  const [scientists] = useState(scientistsData);
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredScientists, setFilteredScientists] = useState(scientistsData);
   const [currentPage, setCurrentPage] = useState(1);

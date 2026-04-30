@@ -4,6 +4,7 @@ interface DraggableMascotProps {
   onClick: () => void;
   isOpen: boolean;
   onPositionChange?: (pos: { x: number; y: number }) => void;
+  hidden?: boolean;
 }
 
 const DEFAULT_POS = { x: 24, y: 120 };
@@ -22,10 +23,13 @@ function loadPosition() {
   }
 }
 
+const MASCOT_SIZE = 56;
+
 export default function DraggableMascot({
   onClick,
   isOpen,
   onPositionChange,
+  hidden = false,
 }: DraggableMascotProps) {
   const [pos, setPos] = useState(loadPosition);
 
@@ -59,9 +63,11 @@ export default function DraggableMascot({
       const dx = e.clientX - dragRef.current.startX;
       const dy = e.clientY - dragRef.current.startY;
       if (Math.abs(dx) > 5 || Math.abs(dy) > 5) movedRef.current = true;
+      const maxX = window.innerWidth - MASCOT_SIZE;
+      const maxY = window.innerHeight - MASCOT_SIZE;
       setPos({
-        x: dragRef.current.origX + dx,
-        y: dragRef.current.origY + dy,
+        x: Math.max(0, Math.min(maxX, dragRef.current.origX + dx)),
+        y: Math.max(0, Math.min(maxY, dragRef.current.origY + dy)),
       });
     };
 
@@ -92,7 +98,7 @@ export default function DraggableMascot({
       }}
       className={`fixed z-50 w-14 h-14 rounded-full shadow-xl cursor-grab active:cursor-grabbing transition-shadow hover:shadow-2xl select-none touch-none bg-gradient-to-br from-red-500 to-red-600 will-change-transform ${
         isOpen ? "ring-4 ring-red-300 dark:ring-red-600" : ""
-      }`}
+      } ${hidden ? "invisible pointer-events-none" : ""}`}
     >
       <div className="w-full h-full rounded-full flex items-center justify-center overflow-hidden border-2 border-white dark:border-gray-700">
         <img

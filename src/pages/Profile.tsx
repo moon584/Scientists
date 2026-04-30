@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useAuth, type User } from "@/contexts/authContext";
+import { useAuth } from "@/contexts/authContext";
 import { motion } from "framer-motion";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";

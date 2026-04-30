@@ -110,6 +110,19 @@ export default function AdminDashboard() {
 
 /* ---- 子组件 ---- */
 
+function Pagination({ page, totalPages, setPage }: {
+  page: number; totalPages: number; setPage: (p: number) => void;
+}) {
+  if (totalPages <= 1) return null;
+  return (
+    <div className="flex items-center justify-center gap-2 mt-4">
+      <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="px-3 py-1 text-sm border rounded disabled:opacity-30">上一页</button>
+      <span className="text-sm text-gray-500">{page} / {totalPages}</span>
+      <button disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="px-3 py-1 text-sm border rounded disabled:opacity-30">下一页</button>
+    </div>
+  );
+}
+
 function StatCard({ icon, label, value, color }: {
   icon: string; label: string; value: string | number; color: string;
 }) {
@@ -231,13 +244,7 @@ function UsersPanel({ token }: { token: string }) {
           </tbody>
         </table>
       </div>
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 mt-4">
-          <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="px-3 py-1 text-sm border rounded disabled:opacity-30">上一页</button>
-          <span className="text-sm text-gray-500">{page} / {totalPages}</span>
-          <button disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="px-3 py-1 text-sm border rounded disabled:opacity-30">下一页</button>
-        </div>
-      )}
+      <Pagination page={page} totalPages={totalPages} setPage={setPage} />
     </div>
   );
 }
@@ -293,13 +300,7 @@ function ChatsPanel({ token }: { token: string }) {
           </tbody>
         </table>
       </div>
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 mt-4">
-          <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="px-3 py-1 text-sm border rounded disabled:opacity-30">上一页</button>
-          <span className="text-sm text-gray-500">{page} / {totalPages}</span>
-          <button disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="px-3 py-1 text-sm border rounded disabled:opacity-30">下一页</button>
-        </div>
-      )}
+      <Pagination page={page} totalPages={totalPages} setPage={setPage} />
     </div>
   );
 }
@@ -373,13 +374,7 @@ function ChatLogsPanel({ token }: { token: string }) {
           </tbody>
         </table>
       </div>
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 mt-4">
-          <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="px-3 py-1 text-sm border rounded disabled:opacity-30">上一页</button>
-          <span className="text-sm text-gray-500">{page} / {totalPages}</span>
-          <button disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="px-3 py-1 text-sm border rounded disabled:opacity-30">下一页</button>
-        </div>
-      )}
+      <Pagination page={page} totalPages={totalPages} setPage={setPage} />
     </div>
   );
 }
@@ -438,13 +433,7 @@ function LoginLogsPanel({ token }: { token: string }) {
           </tbody>
         </table>
       </div>
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 mt-4">
-          <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="px-3 py-1 text-sm border rounded disabled:opacity-30">上一页</button>
-          <span className="text-sm text-gray-500">{page} / {totalPages}</span>
-          <button disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="px-3 py-1 text-sm border rounded disabled:opacity-30">下一页</button>
-        </div>
-      )}
+      <Pagination page={page} totalPages={totalPages} setPage={setPage} />
     </div>
   );
 }
